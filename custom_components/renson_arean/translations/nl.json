@@ -1,0 +1,42 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "title": "Renson Arean — instellen",
+        "description": "Pas de integratie-instellingen aan. Het Modbus slave-adres moet overeenkomen met het thermostaatadres in de RensonThermostat-plugin (standaard: 41).",
+        "data": {
+          "modbus_slave": "Modbus slave-adres thermostaat (1–247)"
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "Renson Arean instellen",
+        "description": "Voer de verbindingsgegevens in van de OpenMotics gateway.",
+        "data": {
+          "host": "IP-adres of hostnaam (zonder http(s)://)",
+          "username": "Gebruikersnaam",
+          "password": "Wachtwoord"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Opnieuw authenticeren",
+        "description": "Voer het nieuwe wachtwoord in voor de OpenMotics gateway.",
+        "data": {
+          "password": "Wachtwoord"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan niet verbinden met de gateway. Controleer het IP-adres.",
+      "invalid_auth": "Ongeldige inloggegevens. Controleer gebruikersnaam en wachtwoord.",
+      "unknown": "Onverwachte fout. Zie de logbestanden voor meer informatie."
+    },
+    "abort": {
+      "already_configured": "Dit apparaat is al geconfigureerd.",
+      "reauth_successful": "Opnieuw authenticeren geslaagd."
+    }
+  }
+}
