@@ -1,12 +1,13 @@
 {
   "domain": "renson_arean",
   "name": "Renson Arean",
-  "version": "2026.6.0",
-  "iot_class": "local_polling",
-  "integration_type": "device",
+  "codeowners": [],
   "config_flow": true,
-  "single_config_entry": true,
-  "requirements": [],
   "dependencies": [],
-  "codeowners": []
+  "documentation": "https://github.com/Laurentjg/home-assistant-renson-arean",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "2026.6.0"
 }
