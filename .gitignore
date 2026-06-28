@@ -1,0 +1,30 @@
+# Privé ontwikkelbestanden
+non-public/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtuele omgevingen
+.venv/
+venv/
+env/
+
+# IDE-bestanden
+.vscode/
+.idea/
+*.swp
+
+# OS-bestanden
+.DS_Store
+Thumbs.db
+
+# Python packaging
+*.egg-info/
+dist/
+build/
+
+# Testuitvoer
+.pytest_cache/
+htmlcov/
+.coverage

@@ -1,0 +1,42 @@
+{
+  "options": {
+    "step": {
+      "init": {
+        "title": "Renson Arean — configure",
+        "description": "Adjust integration settings. The Modbus slave address must match the thermostat address configured in the RensonThermostat plugin (default: 41).",
+        "data": {
+          "modbus_slave": "Thermostat Modbus slave address (1–247)"
+        }
+      }
+    }
+  },
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Renson Arean",
+        "description": "Enter the connection details for the OpenMotics gateway.",
+        "data": {
+          "host": "IP address or hostname (without http(s)://)",
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate",
+        "description": "Enter the new password for the OpenMotics gateway.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the gateway. Check the IP address.",
+      "invalid_auth": "Invalid credentials. Check username and password.",
+      "unknown": "Unexpected error. Check the logs for more information."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "reauth_successful": "Re-authentication successful."
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "domain": "renson_arean",
+  "name": "Renson Arean",
+  "version": "2026.6.0",
+  "iot_class": "local_polling",
+  "integration_type": "device",
+  "config_flow": true,
+  "single_config_entry": true,
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": []
+}
