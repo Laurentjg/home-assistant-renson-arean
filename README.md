@@ -3,7 +3,7 @@
 A fully local Home Assistant custom integration for the **Renson Arean heat pump**, controlled via the OpenMotics gateway (Brain module). No cloud connection required for day-to-day operation.
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
-![HA Version](https://img.shields.io/badge/Home%20Assistant-2025.12%2B-blue)
+![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.6%2B-blue)
 ![Version](https://img.shields.io/badge/version-2026.6.0-green)
 
 ---
@@ -105,7 +105,7 @@ The integration authenticates against the **local REST API** of the Brain module
 
 ## Requirements
 
-- Home Assistant 2025.12 or newer
+- Home Assistant 2026.6 or newer (may work on older versions, although not tested)
 - Renson Arean heat pump connected to an **OpenMotics gateway (Brain module)**, firmware v3.13.4
 - The gateway must be reachable on your local network (HTTPS, port 443)
 - A local user account on the gateway (see [Preconditions](#preconditions))
