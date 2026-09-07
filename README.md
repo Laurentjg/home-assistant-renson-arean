@@ -1,89 +1,110 @@
 # Renson Arean — Home Assistant Integration
 
-A fully local Home Assistant custom integration for the **Renson Arean heat pump**, controlled via the OpenMotics gateway (Brain module). No cloud connection required for day-to-day operation.
+A fully local Home Assistant custom integration for the **Renson Arean heat pump**, talking to the OpenMotics gateway on the **Brain module** over your own network.
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 ![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.6%2B-blue)
-![Version](https://img.shields.io/badge/version-2026.6.0-green)
+![Version](https://img.shields.io/badge/version-2026.9.0-green)
+
+> **You do not need a Renson One account.** Every feature below works on a network with no internet access at all. The integration never contacts the Renson cloud — not for data, not for telemetry, not for anything.
 
 ---
 
-## Features
+## What you get
 
-| Feature | Local | Without internet |
-|---------|-------|-----------------|
-| Read room temperature | ✅ | ✅ |
-| Read / set target temperature (setpoint) | ✅ | ✅ |
-| Read / switch preset (schedule / away / manual) | ✅ | ✅ |
-| Read / switch HVAC mode (heating / cooling) | ✅ | ✅ |
-| Silent mode on/off | ✅ | ✅ |
-| HVAC output status (valves, pumps) | ✅ | ✅ |
-| Bypass valve position | ✅ | ✅ |
-| Steering power (compressor load) | ✅ | ✅ |
-| Edit preset temperatures (e.g. away = 14 °C) | ❌ | ❌ cloud only |
-| Manage heating schedule | ❌ | ❌ cloud only |
+| | Local | Without internet |
+|---|---|---|
+| Room temperature, setpoint, preset, heating/cooling | ✅ | ✅ |
+| Status of the HVAC module's valves and pumps | ✅ | ✅ |
+| System pressure and zone temperature | ✅ | ✅ |
+| Heat pump flow, return and operating state | ✅ | ✅ |
+| Silent mode, backup heater, control parameters | read-only | read-only |
+| Module and app versions, firmware updates available | ✅ | ✅ |
+| Edit preset temperatures (what "away" means in degrees) | ❌ | ❌ cloud only |
+| Manage the heating schedule | ❌ | ❌ cloud only |
 
 ---
 
-## Entities
+## The devices you will see
 
-> Entity names are in English. When Home Assistant is configured in Dutch (Nederlands), entity names are automatically shown in Dutch.
+The integration mirrors how the installation is actually built, rather than presenting one lump.
 
-### Climate (thermostat)
+```
+Brain module                        the controller: firmware, system bus, updates
+├── HVAC module                     the DIN-rail box with the relays and sensor inputs
+├── Thermostaat 0                   the wall thermostat — this is your climate card
+├── Brain-App RensonThermostat      the driver for the wall thermostat
+├── Brain-App rensonheatpumplogic   the control logic
+│   └── (raw log values)
+└── Brain-App RensonHeatPumpR290    the Modbus driver
+    └── Renson Arean R290           the heat pump itself
+```
 
-| HA entity | Name | Description |
-|-----------|------|-------------|
-| `climate.renson_arean_heat_pump` | **Heat pump** | Main thermostat control — shows room temperature, setpoint, preset, HVAC mode, and compressor action. This is the primary object you add to your dashboard. |
+### Thermostaat — your main card
 
-Supported thermostat features:
+`climate.thermostaat_0` shows room temperature, setpoint, preset and heating/cooling mode. Alongside it are room temperature, steering power, the active preset and the thermostat's operating state.
 
-| Feature | Values |
-|---------|--------|
-| HVAC modes | `heat` / `cool` |
-| Preset modes | `schedule` / `away` / `manual` |
-| Target temperature range | 10 °C – 30 °C, in 0.5 °C steps |
-| Current temperature | Read from the wall thermostat via Modbus |
+Presets are `schedule`, `away` and `manual`, shown in your own language. The internal values are unchanged, so existing automations that use `preset_mode: away` keep working.
 
-### Sensors
+### HVAC module — the valves and pumps
 
-| HA entity | Name | Description |
-|-----------|------|-------------|
-| `sensor.renson_arean_steering_power` | **Steering power** | Compressor drive output (0–100 %). A value above 0 means the heat pump is actively heating or cooling. |
-| `sensor.renson_arean_bypass_valve` | **Bypass valve** | Bypass valve position — raw gateway dimmer value. Controls the supply temperature mix. |
-| `sensor.renson_arean_silent_mode_max_duration` | **Silent mode max duration** | Maximum time (hours) a single silent mode activation runs before switching off automatically. |
-| `sensor.renson_arean_silent_mode_start_time` | **Silent mode start time** | Time of day at which recurring silent mode activates (e.g. `22:00`). |
-| `sensor.renson_arean_silent_mode_running_time` | **Silent mode running time** | How long the current silent mode activation has been running (hours). Diagnostic — disabled by default. |
-| `sensor.renson_arean_energy_source` | **Energy source** | Heat pump energy source as configured in the OpenMotics plugin (e.g. `0_Air_source`). Diagnostic — disabled by default. |
-| `sensor.renson_arean_heat_pump_logic_state` | **Heat pump logic state** | Operational state of the `rensonheatpumplogic` plugin (e.g. `Logic`). Diagnostic — disabled by default. |
-| `sensor.renson_arean_commissioning_state` | **Commissioning state** | Commissioning state reported by the plugin (e.g. `Preconfigured`). Diagnostic — disabled by default. |
+One binary sensor per output channel. The entity id follows the **physical channel**, the display name follows the **function**:
 
-### Switches
+| Entity | Name | Channel |
+|---|---|---|
+| `binary_sensor.hvac_module_r1` | Zone 1-afsluiter | R1, dry contact |
+| `binary_sensor.hvac_module_r2` | Badkamerventiel | R2, dry contact |
+| `binary_sensor.hvac_module_r3` | Driewegklep | R3, 230 V |
+| `binary_sensor.hvac_module_r4` | CV-pomp | R4, 230 V |
+| `binary_sensor.hvac_module_r5` | Recirculatiepomp | R5, 230 V |
+| `binary_sensor.hvac_module_out1` | OUT1 (function unknown) | OUT1, 0-10 V |
+| `binary_sensor.hvac_module_out2` | Zone 0-dummyklep | OUT2, 0-10 V |
+| `binary_sensor.hvac_module_out3` | Bypass-klep | OUT3, 0-10 V |
 
-| HA entity | Name | Description |
-|-----------|------|-------------|
-| `switch.renson_arean_silent_mode` | **Silent mode** | Reduces noise from the outdoor unit (compressor / fan). |
+That split is deliberate: if it later turns out R3 switches something other than a three-way valve, only the label is wrong. Your automations keep working, and you can rename the entity yourself in two clicks.
 
+Every one of these carries the wiring story in its attributes — what kind of contact it is, what may be connected, which connector it sits on, and how sure the function label is. The **Kanaaloverzicht** sensor holds the whole table at once, including which source each channel depends on.
 
-### Binary sensors — HVAC outputs
+Measured values on this device — zone temperature and system pressure — come from the log of `rensonheatpumplogic`, not from the gateway. See [A note on the measured values](#a-note-on-the-measured-values).
 
-| HA entity | Name | Description |
-|-----------|------|-------------|
-| `binary_sensor.renson_arean_bathroom_valve` | **Bathroom valve** | Bathroom underfloor heating valve (open/closed). |
-| `binary_sensor.renson_arean_three_way_valve` | **Three-way valve** | Switches between the heating circuit and the domestic hot water circuit. |
-| `binary_sensor.renson_arean_central_heating_pump` | **Central heating pump** | Central heating circulation pump (running/idle). |
-| `binary_sensor.renson_arean_recirculation_pump` | **Recirculation pump** | Hot water recirculation pump (running/idle). |
+### The apps
 
-### Diagnostic binary sensors (disabled by default)
+Each app on the Brain is its own device, named exactly as OpenMotics names it, with its version as the software version. Each has an **App actief** and a **Brondata beschikbaar** indicator, so a failing app is a state you can automate on rather than a log line nobody reads.
 
-| HA entity | Name | Description |
-|-----------|------|-------------|
-| `binary_sensor.renson_arean_backup_heater` | **Backup heater** | Read-only: whether the backup electric heater is enabled in the OpenMotics plugin. |
-| `binary_sensor.renson_arean_silent_mode_recurring` | **Silent mode recurring** | Read-only: whether the recurring silent mode schedule is active in the OpenMotics plugin. |
-| `binary_sensor.renson_arean_gateway_output_0` | **Gateway output 0** | Unknown function — possibly auxiliary boiler relay (230 V). |
-| `binary_sensor.renson_arean_gateway_output_5` | **Gateway output 5** | Unknown function. |
-| `binary_sensor.renson_arean_gateway_output_7` | **Gateway output 7** | Unknown function. |
+`rensonheatpumplogic` additionally exposes its control parameters read-only: silent mode, backup heater, hysteresis per zone, the logic and commissioning state.
 
-Enable these via **Settings → Devices & Services → Renson Arean → entity** once you have identified their purpose.
+### The heat pump
+
+Flow and return temperature, operating state, domestic hot water temperature, mains voltage and the outside temperature the control logic is working with.
+
+---
+
+## A note on the measured values
+
+The heat pump's readings and the HVAC module's sensor inputs are **not offered by the gateway API**. They exist only in the log lines the `rensonheatpumplogic` app writes, as unnamed lists of numbers. This integration reads them there, and is honest about what that costs:
+
+- **They can be empty after a restart.** The app only logs a value when it *changes*. If a temperature holds steady for an hour, nothing is written for an hour. That is not a bug and polling faster does not help.
+- **They go unavailable when the app updates.** The meaning of each position is tied to a specific app version — the layout demonstrably changed between two versions in ten weeks. On an unfamiliar version these entities report nothing rather than a wrong number.
+- **Some of them are still being confirmed.** Every entity carries a `function_confidence` attribute. Where it says `assumed`, the mapping is a well-supported inference that has not been verified against the installation yet.
+
+Every position of every log array is also published under a neutral name (`HP_UNIT/hp1 waarde 17`) as a diagnostic sensor, so the remaining meanings can be established by correlating history.
+
+---
+
+## Storing your gateway password
+
+**Your password is stored in plain text — not hashed, not encrypted.** This is worth understanding before you install anything, and it is true of every Home Assistant integration that needs a password.
+
+It cannot be otherwise here: the OpenMotics gateway trades your real password for a one-hour token, so the integration must be able to present that password again at every renewal. A hash is useless for that. And Home Assistant stores integration settings as plain JSON in `.storage/core.config_entries`; there is no encrypted store.
+
+**In practice: your gateway password is readable in your Home Assistant backups.**
+
+What the integration does do: the token is kept in memory and never written to disk, credentials never appear in a log line (not even at debug level — the password travels in the URL, so naive logging would leak it outright), and downloadable diagnostics are redacted.
+
+What you can do:
+
+- Create a **separate gateway user for Home Assistant**, not your main or installer account. Revoking it then affects nothing else.
+- Keep Home Assistant backups encrypted, and preferably not on a shared network drive.
 
 ---
 
@@ -91,102 +112,98 @@ Enable these via **Settings → Devices & Services → Renson Arean → entity**
 
 ### Create a local user on the Renson Brain module
 
-The integration authenticates against the **local REST API** of the Brain module. A local user account must exist before you can configure the integration.
+The integration authenticates against the **local REST API** of the Brain module, so a local user account has to exist first.
 
-**Steps:**
+1. **Enable authorization mode** by pressing and holding **ACTION** and **SETUP** together for at least 5 seconds. The module indicates that authorization mode is active.
+2. Browse to `https://<brain-module-ip>` and accept the self-signed certificate warning.
+3. Log in and create a local user account. Note the credentials.
 
-1. **Enable authorization mode** on the Brain module by pressing and holding the **ACTION** and **SETUP** buttons simultaneously for at least 5 seconds. The module will indicate that authorization mode is active.
-2. Open a browser and navigate to `https://<brain-module-ip>` (accept the self-signed certificate warning).
-3. Log in and create a local user account (username + password). Note the credentials — you will need them during integration setup.
-
-> The Brain module uses a self-signed TLS certificate. The integration handles this automatically — no manual certificate configuration is needed in Home Assistant.
+> The Brain module uses a self-signed TLS certificate. Certificate verification is therefore off by default; you can switch it on in the options if your gateway presents a certificate your Home Assistant trusts.
 
 ---
 
 ## Requirements
 
-- Home Assistant 2026.6 or newer (may work on older versions, although not tested)
-- Renson Arean heat pump connected to an **OpenMotics gateway (Brain module)**, firmware v3.13.4
-- The gateway must be reachable on your local network (HTTPS, port 443)
-- A local user account on the gateway (see [Preconditions](#preconditions))
+- Home Assistant 2026.6 or newer
+- A Renson Arean heat pump on an OpenMotics gateway (Brain module), gateway firmware 3.14.0 or comparable
+- The gateway reachable on your local network over HTTPS
+- A local user account on the gateway
+
+The integration has **no external dependencies**. `requirements` in the manifest is empty and stays that way: a library that is not there cannot carry a vulnerability.
 
 ---
 
 ## Installation
 
-### Via HACS (recommended)
+### Via HACS
 
-1. In Home Assistant, open **HACS → Integrations**
-2. Click the three-dot menu → **Custom repositories**
-3. Add this repository URL, category: **Integration**
-4. Search for **Renson Arean** and install
-5. Restart Home Assistant
+1. **HACS → Integrations**
+2. Three-dot menu → **Custom repositories**
+3. Add this repository, category **Integration**
+4. Search for **Renson Arean**, install, restart Home Assistant
 
 ### Manual
 
-1. Copy the `custom_components/renson_arean/` folder to your HA config directory:
-   ```
-   <ha-config>/custom_components/renson_arean/
-   ```
-2. Restart Home Assistant
+Copy `custom_components/renson_arean/` into `<ha-config>/custom_components/` and restart.
 
 ---
 
 ## Configuration
 
-### Initial setup
+### Setup
 
-1. Go to **Settings → Devices & Services → Add Integration**
-2. Search for **Renson Arean**
-3. Enter the gateway details:
+**Settings → Devices & Services → Add Integration → Renson Arean**, then enter the host (without `http(s)://`), username and password.
 
-| Field | Example | Notes |
-|-------|---------|-------|
-| IP address or hostname | e.g. `192.168.x.x` | Without `http(s)://` |
-| Username | `myuser` | Local gateway user (see Preconditions) |
-| Password | `••••••••` | Local gateway user password |
+The gateway reports no serial number, so the integration cannot tell two identical gateways apart automatically. If you enter a host that is already configured, it warns you rather than silently refusing — adding a genuine second installation stays possible.
 
-The integration uses the gateway serial number as a unique device identifier, so reconfiguring the IP address does not create a duplicate device.
+### Options
 
-### Changing the Modbus slave address
+**Settings → Devices & Services → Renson Arean → Configure**
 
-The integration communicates with the wall thermostat via Modbus. The default slave address is **41**, which matches the factory default of the RensonThermostat plugin on the OpenMotics gateway.
-
-If your installation uses a different address, you can change it without reinstalling the integration:
-
-1. Go to **Settings → Devices & Services**
-2. Find the **Renson Arean** integration and click **Configure**
-3. Enter the correct Modbus slave address (1–247)
-
-**Where to find the address:** Open the OpenMotics web interface (`https://<brain-module-ip>`), navigate to **Plugins → RensonThermostat**, and look for the Modbus slave address in the plugin settings.
+| Option | Default | What it does |
+|---|---|---|
+| Verify TLS certificate | off | On means the gateway's certificate must be trusted. Leave off for the factory self-signed certificate. |
+| Thermostat Modbus slave address | 41 | Must match the address in the RensonThermostat app. |
+| Wall thermostat is wired to | Brain module | Only affects where the thermostat appears in the device tree. |
+| Thermostat status interval | 10 s | What you watch live. |
+| Outputs and app log interval | 30 s | Do not raise much: the log buffer holds about 90 seconds. |
+| App configuration interval | 5 min | These are settings, not measurements. |
+| Modules, apps and versions | 15 min | Rarely changes. |
 
 ---
 
 ## How it works
 
-The integration communicates directly with the **OpenMotics local REST API** on the gateway — no cloud traffic for any of the supported features. Authentication uses a bearer token (1-hour TTL, auto-renewed).
+The integration talks to the local OpenMotics REST API. Authentication uses a token with a one-hour lifetime, renewed automatically and kept in memory only.
 
-Setpoint and preset changes are written via **Modbus register writes to the wall thermostat (slave 41 by default)**. The gateway's RensonThermostat plugin picks up the change within ~5 seconds and propagates it to the heat pump logic. The integration applies optimistic state updates so Home Assistant reflects the change immediately.
+There is no single polling interval. Each source is polled at a rate matching how fast it actually changes, which keeps the thermostat current without re-reading the topology every ten seconds.
 
-The coordinator polls all data every **30 seconds** (3 API calls per cycle).
+Setpoint and preset changes are written as Modbus register writes to the wall thermostat, exactly as the previous version did. Because the app polls that thermostat every 5 seconds, confirmation cannot arrive sooner — so the card shows your change immediately, the gateway is asked again at 2, 5, 8, 12 and 20 seconds, and a poll carrying the old value cannot undo what you just set. If confirmation never comes, the gateway value takes over again and one warning is logged.
 
-For a full technical description, see [docs/architecture.md](docs/architecture.md).
+There is deliberately **no service to write an arbitrary Modbus register**. As a service that would be a remote arbitrary write onto the installation bus. Writing is limited to the setpoint and the preset, both range-checked before they are sent.
 
 ---
 
 ## Known limitations
 
-- **Single thermostat only** — the integration currently supports one wall thermostat (Modbus slave 41, thermostat ID 0). Installations with multiple thermostat zones are not yet supported.
-- **Preset temperatures** (e.g. what temperature "away" means in degrees) can only be changed via the Renson One cloud portal — there is no local API endpoint for this in firmware v3.13.4.
-- **Heating schedule** management is cloud-only.
-- **Water supply temperature** and **outdoor temperature** sensors are not available: the gateway plugin logs do not expose this data in a parseable format in v3.13.4.
-- **Bypass valve** is shown as a raw gateway dimmer value; the exact scale (0–100 vs 100–255) is not fully confirmed.
+- **The two heat pump apps are read-only.** Silent mode and the backup heater are shown but cannot be switched. Changing them means rewriting a whole configuration block, which can collide with the app itself, and a wrong control parameter costs comfort or heat pump life. Set them in OpenMotics or the Renson One app instead.
+- **Preset temperatures and the heating schedule are cloud-only.** They are stored locally on the Brain and keep working without internet; only *changing* them needs Renson One.
+- **No energy metering.** The P1 port cannot be used alongside the expansion bus, and the expansion bus carries the Modbus link to the heat pump and thermostat. This is a property of the hardware, not an omission. A separate P1 Concentrator module would be needed.
+- **The bypass position is a state, not a percentage.** All eight outputs report a constant dimmer value, so there is no percentage to read. What the log does report is `Open` or `Closed`.
+- **A sensor drifting out of true cannot be detected.** An NTC is a passive resistor with no error signal; only a disconnected or short-circuited sensor is recognisable. A perfectly ordinary reading, 0 °C included, is never discarded.
+- **Removing and re-adding the integration breaks history.** Identifiers are rooted on the config entry, because the gateway offers no stable hardware id. Every alternative fails at a moment you cannot see coming; this one fails only when you do it yourself.
+
+---
+
+## Upgrading from 2026.6.0
+
+Some entity ids change and a few entities disappear. See [docs/release-notes.md](docs/release-notes.md) before you upgrade.
 
 ---
 
 ## Contributing
 
-Issues and pull requests are welcome. See [docs/development.md](docs/development.md) for the development setup and validation steps.
+Issues and pull requests are welcome.
 
 ---
 

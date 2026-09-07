@@ -1,20 +1,9 @@
 {
-  "options": {
-    "step": {
-      "init": {
-        "title": "Renson Arean — configure",
-        "description": "Adjust integration settings. The Modbus slave address must match the thermostat address configured in the RensonThermostat plugin (default: 41).",
-        "data": {
-          "modbus_slave": "Thermostat Modbus slave address (1–247)"
-        }
-      }
-    }
-  },
   "config": {
     "step": {
       "user": {
         "title": "Set up Renson Arean",
-        "description": "Enter the connection details for the OpenMotics gateway.",
+        "description": "Enter the connection details for the OpenMotics gateway on the Brain module. The integration works entirely on your local network; a Renson One account is not required.\n\nUse a separate gateway user for Home Assistant rather than the installer or main account.",
         "data": {
           "host": "IP address or hostname (without http(s)://)",
           "username": "Username",
@@ -23,8 +12,9 @@
       },
       "reauth_confirm": {
         "title": "Re-authenticate",
-        "description": "Enter the new password for the OpenMotics gateway.",
+        "description": "The gateway rejected the stored credentials. Enter them again.",
         "data": {
+          "username": "Username",
           "password": "Password"
         }
       }
@@ -32,11 +22,50 @@
     "error": {
       "cannot_connect": "Cannot connect to the gateway. Check the IP address.",
       "invalid_auth": "Invalid credentials. Check username and password.",
-      "unknown": "Unexpected error. Check the logs for more information."
+      "host_already_configured": "This host is already configured. The gateway reports no serial number, so a duplicate cannot be detected automatically — add it only if it really is a second installation."
     },
     "abort": {
-      "already_configured": "This device is already configured.",
       "reauth_successful": "Re-authentication successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Renson Arean — settings",
+        "description": "Each source has its own polling interval, because they change at very different rates. The lower bounds protect the Modbus bus, which is shared with the three Renson apps.",
+        "data": {
+          "verify_ssl": "Verify the TLS certificate (off by default: the gateway uses a self-signed certificate)",
+          "thermostat_slave": "Thermostat Modbus slave address (1–247)",
+          "thermostat_connected_to": "The wall thermostat is wired to",
+          "interval_thermostat": "Thermostat status, seconds",
+          "interval_state": "Outputs and app log, seconds",
+          "interval_config": "App configuration, seconds",
+          "interval_topology": "Modules, apps and versions, seconds"
+        }
+      }
+    }
+  },
+  "selector": {
+    "thermostat_connected_to": {
+      "options": {
+        "brain": "Brain module",
+        "hvac": "HVAC module"
+      }
+    }
+  },
+  "entity": {
+    "climate": {
+      "renson_thermostat": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "schedule": "Schedule",
+              "away": "Away",
+              "manual": "Manual"
+            }
+          }
+        }
+      }
     }
   }
 }

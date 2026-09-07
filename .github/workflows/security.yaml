@@ -1,0 +1,65 @@
+# Dependency and code scanning (SEC-05, SEC-06, SEC-08).
+#
+# Actions are pinned to a commit SHA rather than a tag (SEC-03): a tag can be
+# moved, a SHA cannot. Updating one is a deliberate act, and the comment says
+# which ref it was at the time.
+
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, so a CVE published after a release still surfaces (SEC-07).
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Dependencies and static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.13"
+
+      - name: Install scanners
+        run: pip install --disable-pip-version-check pip-audit bandit
+
+      # The integration ships zero runtime dependencies (SEC-01, D-12). The
+      # gate is therefore nearly empty by design — its job is to make adding
+      # one a visible decision rather than a silent one.
+      - name: Collect the declared requirements
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          manifest = json.loads(
+              pathlib.Path("custom_components/renson_arean/manifest.json").read_text()
+          )
+          requirements = manifest["requirements"]
+          pathlib.Path("requirements.txt").write_text("\n".join(requirements) + "\n")
+          print("requirements:", requirements or "geen")
+          PY
+
+      - name: Audit dependencies
+        run: pip-audit --strict --desc --format json --output pip-audit.json -r requirements.txt
+
+      - name: Static analysis of our own code
+        run: bandit -r custom_components -f json -o bandit.json
+
+      # Archived per run, so it stays checkable afterwards what was known at
+      # the time of release (SEC-08).
+      - name: Archive scan results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: security-scan
+          path: |
+            pip-audit.json
+            bandit.json
