@@ -75,13 +75,13 @@ Measured values on this device — system water temperature and system pressure 
 
 ### The apps
 
-Each app on the Brain is its own device, named exactly as OpenMotics names it, with its version as the software version. Each has an **App actief** and a **Brondata beschikbaar** indicator, so a failing app is a state you can automate on rather than a log line nobody reads.
+Each app on the Brain is its own device, named exactly as OpenMotics names it, with its version as the software version. Each has an **App actief** and a **Brondata-probleem** indicator, so a failing app is a state you can automate on rather than a log line nobody reads.
 
 `rensonheatpumplogic` additionally exposes its control parameters read-only: silent mode, backup heater, hysteresis per zone, the logic and commissioning state.
 
 ### The heat pump
 
-Flow and return temperature, compressor frequency, operating state, domestic hot water temperature, mains voltage and the outside temperature the control logic is working with.
+Flow and return temperature, compressor frequency, operating state, domestic hot water temperature, mains voltage, current drawn and the outside temperature the control logic is working with.
 
 **Heat pump reachable** follows the heat pump itself, not the app that reads it. If the heat pump loses power or its bus link while the Brain keeps running, this entity turns off within three minutes, all heat pump values go unavailable together, and one warning is logged — with one recovery line, including the outage duration, when it comes back.
 

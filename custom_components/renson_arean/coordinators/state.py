@@ -10,12 +10,22 @@ simply lose cycles (CN-11).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING, Callable
+
+from homeassistant.util import dt as dt_util
 
 from ..api import models
 from ..applog import reader, ssr
-from ..const import APP_LOGIC, SOURCE_GATEWAY_CORE, source_app_log
-from ..health import STATUS_ERROR, STATUS_OK
+from ..const import (
+    APP_LOGIC,
+    HEATPUMP_ARRAYS,
+    HEATPUMP_FRESHNESS,
+    SOURCE_GATEWAY_CORE,
+    SOURCE_HARDWARE_HEATPUMP,
+    source_app_log,
+)
+from ..health import STATUS_ERROR, STATUS_MISSING, STATUS_OK, freshness
 from . import RensonCoordinator
 
 if TYPE_CHECKING:
@@ -35,6 +45,10 @@ class StateData:
     brain_inputs: dict[int, bool] = field(default_factory=dict)
     ssr: ssr.SsrSnapshot = field(default_factory=ssr.SsrSnapshot)
     app_health: dict[str, ssr.AppHealth] = field(default_factory=dict)
+    # `hardware:heatpump` (D-17): None while the log cannot tell, which is
+    # different from the monobloc being gone.
+    heatpump_reachable: bool | None = None
+    heatpump_seen: datetime | None = None
 
 
 class StateCoordinator(RensonCoordinator[StateData]):
@@ -51,6 +65,10 @@ class StateCoordinator(RensonCoordinator[StateData]):
         """`app_version` comes from the topology coordinator (D-14 d)."""
         super().__init__(hass, client, health, "state", interval)
         self._app_version = app_version
+        self._started: datetime | None = None
+        # Remembered across polls: the buffer holds about a minute and a half,
+        # shorter than the freshness limit.
+        self._heatpump_seen: datetime | None = None
 
     async def _fetch(self) -> StateData:
         outputs = models.parse_output_status(await self.client.get_output_status())
@@ -81,10 +99,49 @@ class StateCoordinator(RensonCoordinator[StateData]):
                 "nog geen SSR-regels in de logbuffer",
             )
 
+        heatpump_reachable = self._heatpump_reachable(snapshot)
+
         app_health = {app: ssr.parse_app_health(lines) for app, lines in logs.items()}
         return StateData(
             outputs=outputs,
             brain_inputs=brain_inputs,
             ssr=snapshot,
             app_health=app_health,
+            heatpump_reachable=heatpump_reachable,
+            heatpump_seen=self._heatpump_seen,
         )
+
+    def _heatpump_reachable(self, snapshot: ssr.SsrSnapshot) -> bool | None:
+        """Judge `hardware:heatpump` by the age of the monobloc arrays (§5.0).
+
+        The log timestamps are the gateway's local time, so they are compared
+        against local time without a zone.
+        """
+        now = dt_util.now().replace(tzinfo=None)
+        if self._started is None:
+            self._started = now
+        for key in HEATPUMP_ARRAYS:
+            seen = snapshot.seen.get(key)
+            if seen is not None and (
+                self._heatpump_seen is None or seen > self._heatpump_seen
+            ):
+                self._heatpump_seen = seen
+
+        if snapshot.rejected:
+            # The log cannot be read, so nothing can be said about the device
+            # behind it: "we cannot read it" is not "it is gone" (§5.8).
+            return None
+
+        reachable = freshness(
+            self._heatpump_seen, self._started, now, HEATPUMP_FRESHNESS
+        )
+        if reachable is True:
+            self.health.report(SOURCE_HARDWARE_HEATPUMP, STATUS_OK)
+        elif reachable is False:
+            self.health.report(
+                SOURCE_HARDWARE_HEATPUMP,
+                STATUS_MISSING,
+                f"geen {' of '.join(HEATPUMP_ARRAYS)} in "
+                f"{int(HEATPUMP_FRESHNESS.total_seconds() // 60)} minuten",
+            )
+        return reachable

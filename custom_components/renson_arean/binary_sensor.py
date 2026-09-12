@@ -13,11 +13,12 @@ from homeassistant.const import EntityCategory
 from .const import (
     APP_HEATPUMP,
     APP_LOGIC,
+    HEATPUMP_ARRAYS,
     HVAC_MODULE_MODEL,
     HVAC_OUTPUTS,
     SOURCE_GATEWAY_CORE,
+    SOURCE_HARDWARE_HEATPUMP,
     source_app_config,
-    source_app_log,
     source_app_runtime,
 )
 from .entity import RensonChannelEntity, RensonEntity
@@ -143,8 +144,10 @@ def _app_entities(
             runtime.config,
             device,
             origin,
-            "source_available",
-            "Brondata beschikbaar",
+            # A PROBLEM sensor is on when there is a problem, so the name says
+            # problem too (I-13).
+            "source_problem",
+            "Brondata-probleem",
             source_app_config(app),
             lambda data, app=app: not (data and app in data.raw),
             endpoint="get_config",
@@ -225,24 +228,6 @@ async def async_setup_entry(
     for app, (device, origin) in devices.apps.items():
         entities.extend(_app_entities(runtime, app, device, origin))
 
-    if APP_HEATPUMP in devices.apps:
-        device, origin = devices.apps[APP_HEATPUMP]
-        entities.append(
-            RensonBinarySensor(
-                runtime.state,
-                device,
-                origin,
-                "modbus_healthy",
-                "Modbus-verbinding gezond",
-                source_app_log(APP_HEATPUMP),
-                lambda data: _modbus_problem(data),
-                endpoint="get_plugin_logs",
-                device_class=BinarySensorDeviceClass.PROBLEM,
-                entity_category=EntityCategory.DIAGNOSTIC,
-                attributes_fn=_modbus_attributes,
-            )
-        )
-
     if devices.heatpump is not None:
         entities.append(
             RensonBinarySensor(
@@ -251,11 +236,11 @@ async def async_setup_entry(
                 devices.heatpump_origin,
                 "reachable",
                 "Warmtepomp bereikbaar",
-                source_app_log(APP_HEATPUMP),
-                lambda data: _modbus_reachable(data),
+                SOURCE_HARDWARE_HEATPUMP,
+                lambda data: data.heatpump_reachable,
                 endpoint="get_plugin_logs",
                 device_class=BinarySensorDeviceClass.CONNECTIVITY,
-                attributes_fn=_modbus_attributes,
+                attributes_fn=_heatpump_attributes,
             )
         )
 
@@ -272,21 +257,44 @@ async def async_setup_entry(
                 endpoint="get_thermostat_group_status",
                 device_class=BinarySensorDeviceClass.CONNECTIVITY,
                 entity_category=EntityCategory.DIAGNOSTIC,
+                attributes_fn=_layer_l2,
             )
         )
+        # An on/off flag of this thermostat, not its working state: it stayed ON
+        # for two hours while the heat demand flipped three times (§5.4).
         entities.append(
             RensonBinarySensor(
                 runtime.thermostat,
                 device,
                 origin,
+                "enabled",
+                "Thermostaat ingeschakeld",
+                SOURCE_GATEWAY_CORE,
+                lambda data, i=om_id: (
+                    _on_off_state(data[i].state) if data and i in data else None
+                ),
+                endpoint="get_thermostat_group_status",
+                device_class=BinarySensorDeviceClass.RUNNING,
+                entity_category=EntityCategory.DIAGNOSTIC,
+                attributes_fn=_layer_l2,
+            )
+        )
+        # Controller mechanics belong to the Brain, which runs the controller
+        # (D-01, I-16). The origin stays the thermostat's (D-15).
+        entities.append(
+            RensonBinarySensor(
+                runtime.thermostat,
+                devices.brain,
+                origin,
                 "hysteresis_active",
-                "Hysterese actief",
+                f"Hysterese actief — thermostaat {om_id}",
                 SOURCE_GATEWAY_CORE,
                 lambda data, i=om_id: (
                     data[i].hysteresis_active if data and i in data else None
                 ),
                 endpoint="get_thermostat_group_status",
                 entity_category=EntityCategory.DIAGNOSTIC,
+                attributes_fn=_layer_l2,
             )
         )
 
@@ -324,25 +332,31 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-def _modbus_problem(data) -> bool | None:
-    health = data.app_health.get(APP_HEATPUMP)
-    if health is None or health.modbus_ok is None:
-        return None
-    return not health.modbus_ok
+def _layer_l2(_data) -> dict[str, Any]:
+    """The OpenMotics layer of the thermostat model (§5.4)."""
+    return {"layer": "L2"}
 
 
-def _modbus_reachable(data) -> bool | None:
-    health = data.app_health.get(APP_HEATPUMP)
-    if health is None or health.modbus_ok is None:
-        return None
-    return health.modbus_ok
+def _on_off_state(state: str | None) -> bool | None:
+    if state == "ON":
+        return True
+    if state == "OFF":
+        return False
+    return None
 
 
-def _modbus_attributes(data) -> dict[str, Any]:
-    health = data.app_health.get(APP_HEATPUMP)
-    if health is None:
-        return {}
-    return {
-        "reason": health.reason,
-        "watchdog_restarts": health.watchdog_restarts,
+def _heatpump_attributes(data) -> dict[str, Any]:
+    """The evidence behind the state, and what the driver app says about itself.
+
+    The `Could not enable Modbus` text stays readable here as a reason, never as
+    the state: the app that logs it has no Modbus configured at all (§5.7).
+    """
+    attributes: dict[str, Any] = {
+        "last_seen": data.heatpump_seen.isoformat() if data.heatpump_seen else None,
+        "evidence": " of ".join(HEATPUMP_ARRAYS),
     }
+    health = data.app_health.get(APP_HEATPUMP)
+    if health is not None:
+        attributes["driver_reason"] = health.reason
+        attributes["watchdog_restarts"] = health.watchdog_restarts
+    return attributes

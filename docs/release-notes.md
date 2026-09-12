@@ -90,6 +90,9 @@ je nog steeds op je thermostaatkaart. `Bedrijfstoestand thermostaat` heet nu `Th
 ingeschakeld`: het is een aan/uit-vlag, geen werkende toestand, en de oude naam suggereerde het
 tegendeel.
 
+**`Brondata beschikbaar` heet nu `Brondata-probleem`.** Het was al een probleemmelding — `aan` betekende
+dat er iets mis was — maar de naam beloofde het omgekeerde.
+
 **`Zonetemperatuur` heet nu `Systeemwatertemperatuur`.** Metingen aan een draaiende installatie
 lieten zien dat deze voeler naar bijna 40 °C loopt terwijl de kamer op 20 °C staat: het is de
 watertemperatuur in het verwarmingssysteem, geen ruimtetemperatuur.
@@ -97,7 +100,7 @@ watertemperatuur in het verwarmingssysteem, geen ruimtetemperatuur.
 **De voelers van de boilertank en de recirculatie bestaan als entiteit, maar staan standaard uit** als
 je installatie geen tapwater of recirculatie gebruikt. Heb je die subsystemen wél ingeschakeld, dan
 staan ze vanzelf aan. Zet je ze handmatig aan zonder dat het subsysteem draait, dan blijven ze leeg —
-een attribuut vertelt waarom.
+het `Kanaaloverzicht` vertelt waarom.
 
 **Uitgang 6 heet nu anders.** Die stond als "Bypass-klep" in je overzicht; het is in werkelijkheid de
 dummy-zoneklep van het thermostaatsysteem. Het etiket was fout, niet het kanaal.

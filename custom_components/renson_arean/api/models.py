@@ -346,6 +346,9 @@ class LogicConfig:
     hysteresis_top_zone1: float | None = None
     hysteresis_bottom_zone1: float | None = None
     energybus_address: str | None = None
+    # Whether the subsystems behind T1/T2 and T4 are in use (§5.3, I-15)
+    dhw_status: str | None = None
+    has_recirculation: bool | None = None
     # hvac_config key → channel id, the wiring map of the installation (§2.3)
     channel_functions: dict[str, int] = field(default_factory=dict)
 
@@ -357,6 +360,7 @@ def parse_logic_config(raw: dict[str, Any]) -> LogicConfig:
     state = _first(raw.get("state_config"))
     zone = _first(raw.get("zone_config"))
     hvac = _first(raw.get("hvac_config"))
+    dhw = _first(raw.get("dhw_config"))
 
     functions: dict[str, int] = {}
     for key, value in hvac.items():
@@ -384,6 +388,8 @@ def parse_logic_config(raw: dict[str, Any]) -> LogicConfig:
         hysteresis_top_zone1=as_float(zone.get("hysteresis_top_zone1")),
         hysteresis_bottom_zone1=as_float(zone.get("hysteresis_bottom_zone1")),
         energybus_address=hvac.get("energybus_address"),
+        dhw_status=dhw.get("dhw_status"),
+        has_recirculation=on_off(hvac.get("has_recirculation")),
         channel_functions=functions,
     )
 

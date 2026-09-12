@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityFeature,
+    HVACAction,
     HVACMode,
 )
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
@@ -46,7 +47,7 @@ HVAC_TO_OM_MODE = {value: key for key, value in OM_MODE_TO_HVAC.items()}
 
 
 class RensonThermostat(RensonEntity, ClimateEntity):
-    """One wall thermostat."""
+    """One thermostat zone: the wall unit's reading, steered via the OM controller."""
 
     _attr_translation_key = "renson_thermostat"
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
@@ -119,9 +120,28 @@ class RensonThermostat(RensonEntity, ClimateEntity):
         return OM_MODE_TO_HVAC.get(self._state.group_mode or "")
 
     @property
+    def hvac_action(self) -> HVACAction | None:
+        """Whether the controller asks for heat (or cold) right now (§5.4).
+
+        Fed by the OM controller: demand while hysteresis is active or steering
+        power is above zero. It says the controller asks, not that the heat pump
+        delivers — on 2026-09-12 it kept asking with the monobloc switched off.
+        """
+        state = self._state
+        if state is None:
+            return None
+        if not (state.hysteresis_active or (state.steering_power or 0) > 0):
+            return HVACAction.IDLE
+        if state.group_mode == "cooling":
+            return HVACAction.COOLING
+        return HVACAction.HEATING
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """The fields 2026.6.0 left unread (§5.4)."""
         attributes = super().extra_state_attributes
+        # It steers the zone through the OM controller, not the wall unit.
+        attributes["layer"] = "L2"
         state = self._state
         if state is None:
             return attributes

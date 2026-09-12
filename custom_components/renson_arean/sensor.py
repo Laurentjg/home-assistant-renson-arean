@@ -10,7 +10,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.const import EntityCategory
 
 from .const import (
@@ -18,11 +22,15 @@ from .const import (
     APP_LOGIC,
     APP_THERMOSTAT,
     CONFIDENCE_ASSUMED,
+    HEATPUMP_ARRAYS,
     HVAC_INPUTS,
     HVAC_OUTPUTS,
     OM_PRESET_TO_HA,
     SOURCE_GATEWAY_CORE,
+    SSR_APP_VERSION,
     SSR_ARRAYS,
+    SUBSYSTEM_DHW,
+    SUBSYSTEM_RECIRCULATION,
     source_app_config,
     source_app_log,
 )
@@ -34,7 +42,7 @@ if TYPE_CHECKING:
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
     from . import RensonConfigEntry, RensonRuntime
-    from .const import Origin, SsrArray, SsrPosition
+    from .const import HvacChannel, Origin, SsrArray, SsrPosition
     from .coordinators import RensonCoordinator
 
 DIAGNOSTIC = EntityCategory.DIAGNOSTIC
@@ -60,12 +68,14 @@ class RensonSensor(RensonEntity, SensorEntity):
         entity_category: EntityCategory | None = None,
         enabled_default: bool = True,
         attributes_fn: Callable[[Any], dict[str, Any]] | None = None,
+        state_class: SensorStateClass | None = None,
     ) -> None:
         """Bind the sensor to its source."""
         super().__init__(coordinator, device, origin, key, name, source, endpoint)
         self._value_fn = value_fn
         self._attributes_fn = attributes_fn
         self._attr_device_class = device_class
+        self._attr_state_class = state_class
         self._attr_native_unit_of_measurement = unit
         self._attr_entity_category = entity_category
         self._attr_entity_registry_enabled_default = enabled_default
@@ -134,8 +144,14 @@ def _ssr_sensor(
     origin: Origin,
     array_key: str,
     position: SsrPosition,
+    requires_heatpump: bool = False,
 ) -> RensonSensor:
-    """A named sensor fed by one SSR position."""
+    """A named sensor fed by one SSR position.
+
+    `requires_heatpump` makes the value disappear together with
+    `hardware:heatpump`, so a monobloc outage shows as one recognisable event
+    across the whole device rather than position by position (§5.0).
+    """
     return RensonSensor(
         runtime.state,
         device,
@@ -143,12 +159,17 @@ def _ssr_sensor(
         position.key,
         position.name,
         source_app_log(APP_LOGIC),
-        lambda data, k=array_key, i=position.index: data.ssr.value(k, i),
+        lambda data, k=array_key, i=position.index, r=requires_heatpump: (
+            data.ssr.value(k, i) if data.heatpump_reachable or not r else None
+        ),
         endpoint="get_plugin_logs",
         device_class=(
             SensorDeviceClass(position.device_class) if position.device_class else None
         ),
         unit=position.unit,
+        state_class=(
+            SensorStateClass(position.state_class) if position.state_class else None
+        ),
         entity_category=DIAGNOSTIC if position.diagnostic else None,
         attributes_fn=lambda _data, p=position, k=array_key: {
             "function_confidence": p.confidence,
@@ -269,6 +290,7 @@ def _channel_overview(runtime: RensonRuntime) -> RensonSensor:
         )
     for input_id, channel in HVAC_INPUTS.items():
         position = _input_position(channel.key)
+        key = position.key if position else _unmapped_input_key(channel)
         rows.append(
             {
                 "channel": channel.channel,
@@ -277,13 +299,15 @@ def _channel_overview(runtime: RensonRuntime) -> RensonSensor:
                 "function": channel.default_name,
                 "source": source_app_log(APP_LOGIC),
                 "entity": (
-                    entity_id_for("sensor", devices.hvac_origin, position.key)
-                    if position
-                    else None
+                    entity_id_for("sensor", devices.hvac_origin, key) if key else None
                 ),
                 "wired": channel.wired,
             }
         )
+        if position is None and key is not None:
+            rows[-1]["no_value_reason"] = (
+                f"geen arraypositie vastgesteld voor app-versie {SSR_APP_VERSION}"
+            )
 
     wired = sum(1 for row in rows if row["wired"] == "true")
     return RensonSensor(
@@ -316,10 +340,73 @@ def _input_position(channel_key: str) -> SsrPosition | None:
     return positions[0] if positions else None
 
 
-def _thermostat_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
+def _unmapped_input_key(channel: HvacChannel) -> str | None:
+    """The entity key of a temperature input without an array position (I-15)."""
+    if channel.subsystem is None:
+        return None
+    return f"{channel.key}_temperature"
+
+
+def _subsystem_in_use(runtime: RensonRuntime, subsystem: str) -> bool:
+    """Whether the installation uses the subsystem behind an input.
+
+    Read once at setup: it decides `enabled_default`, which only matters when
+    the entity is first registered.
+    """
+    config = runtime.config.data
+    logic = config.logic if config else None
+    if logic is None:
+        return False
+    if subsystem == SUBSYSTEM_DHW:
+        return logic.dhw_status not in (None, "Disabled")
+    if subsystem == SUBSYSTEM_RECIRCULATION:
+        return bool(logic.has_recirculation)
+    return False
+
+
+def _unmapped_input_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
+    """T1, T2 and T4: an entity that tells why it has no value (§5.3, I-15).
+
+    HP_HVAC/0 has twelve positions and all twelve are taken, so there is
+    nothing to read. The entity exists for installations whose array is longer,
+    and stays unavailable rather than guessing. Why it has no value is stated in
+    the channel overview: an unavailable entity publishes no attributes.
+    """
+    devices = runtime.devices
     sensors: list[RensonSensor] = []
-    for om_id, (device, origin) in runtime.devices.thermostats.items():
-        for key, name, getter, device_class, unit, category in (
+    for channel in HVAC_INPUTS.values():
+        key = _unmapped_input_key(channel)
+        if key is None:
+            continue
+        sensors.append(
+            RensonSensor(
+                runtime.state,
+                devices.hvac,
+                devices.hvac_origin,
+                key,
+                channel.default_name,
+                source_app_log(APP_LOGIC),
+                lambda _data: None,
+                endpoint="get_plugin_logs",
+                device_class=SensorDeviceClass.TEMPERATURE,
+                unit="°C",
+                enabled_default=_subsystem_in_use(runtime, channel.subsystem),
+            )
+        )
+    return sensors
+
+
+def _thermostat_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
+    """The thermostat device carries what the user reads off the wall unit (§5.4).
+
+    Steering power is the output of the OM controller, which runs on the Brain
+    (D-01): it is shown there, under the thermostat's own origin, so its
+    identity does not depend on where it is displayed (D-15).
+    """
+    sensors: list[RensonSensor] = []
+    devices = runtime.devices
+    for om_id, (device, origin) in devices.thermostats.items():
+        for key, name, getter, device_class, unit, category, target, layer in (
             (
                 "room_temperature",
                 "Ruimtetemperatuur",
@@ -327,14 +414,18 @@ def _thermostat_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
                 SensorDeviceClass.TEMPERATURE,
                 "°C",
                 None,
+                device,
+                "L1",
             ),
             (
                 "steering_power",
-                "Stuurvermogen",
+                f"Stuurvermogen — thermostaat {om_id}",
                 lambda t: t.steering_power,
-                SensorDeviceClass.POWER_FACTOR,
-                "%",
                 None,
+                "%",
+                DIAGNOSTIC,
+                devices.brain,
+                "L2",
             ),
             (
                 "active_preset",
@@ -343,20 +434,14 @@ def _thermostat_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
                 None,
                 None,
                 DIAGNOSTIC,
-            ),
-            (
-                "operating_state",
-                "Bedrijfstoestand thermostaat",
-                lambda t: t.state,
-                None,
-                None,
-                DIAGNOSTIC,
+                device,
+                "L2",
             ),
         ):
             sensors.append(
                 RensonSensor(
                     runtime.thermostat,
-                    device,
+                    target,
                     origin,
                     key,
                     name,
@@ -368,6 +453,7 @@ def _thermostat_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
                     device_class=device_class,
                     unit=unit,
                     entity_category=category,
+                    attributes_fn=lambda _data, layer=layer: {"layer": layer},
                 )
             )
     return sensors
@@ -469,6 +555,7 @@ async def async_setup_entry(
                     runtime, devices.hvac, devices.hvac_origin, "HP_HVAC/0", position
                 )
             )
+        entities.extend(_unmapped_input_sensors(runtime))
         entities.append(
             RensonSensor(
                 runtime.state,
@@ -484,16 +571,18 @@ async def async_setup_entry(
         )
 
     if devices.heatpump is not None:
-        for position in SSR_ARRAYS["HP_UNIT/hp1"].positions:
-            entities.append(
-                _ssr_sensor(
-                    runtime,
-                    devices.heatpump,
-                    devices.heatpump_origin,
-                    "HP_UNIT/hp1",
-                    position,
+        for array_key in HEATPUMP_ARRAYS:
+            for position in SSR_ARRAYS[array_key].positions:
+                entities.append(
+                    _ssr_sensor(
+                        runtime,
+                        devices.heatpump,
+                        devices.heatpump_origin,
+                        array_key,
+                        position,
+                        requires_heatpump=True,
+                    )
                 )
-            )
         entities.append(
             RensonSensor(
                 runtime.state,
@@ -502,10 +591,13 @@ async def async_setup_entry(
                 "outside_temperature",
                 "Buitentemperatuur",
                 source_app_log(APP_LOGIC),
-                lambda data: data.ssr.weather_temperature,
+                lambda data: (
+                    data.ssr.weather_temperature if data.heatpump_reachable else None
+                ),
                 endpoint="get_plugin_logs",
                 device_class=SensorDeviceClass.TEMPERATURE,
                 unit="°C",
+                state_class=SensorStateClass.MEASUREMENT,
                 attributes_fn=lambda _data: {
                     "note": (
                         "De app haalt deze waarde zelf op; de integratie leest "

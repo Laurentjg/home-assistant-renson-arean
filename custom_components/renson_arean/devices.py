@@ -73,13 +73,15 @@ def hvac_module_device(
 def thermostat_device(
     entry_id: str, om_id: int, slave: int | None, via: str
 ) -> DeviceInfo:
-    """One wall thermostat. `via` is the identifier of the device it hangs on.
+    """One thermostat zone. `via` is the identifier of the device it hangs on.
 
     Whether that is the Brain or the HVAC module is not derivable from the API
-    (V-13), so it is an option rather than an assumption.
+    (V-13), so it is an option rather than an assumption. The model says what
+    the device is — a wall unit plus the OM controller behind it — rather than
+    promising a panel it only half is (I-16).
     """
     model = (
-        f"Wandthermostaat (Modbus {slave})"
+        f"Thermostaatzone {om_id} — wandthermostaat (Modbus {slave}) + OM-regelaar"
         if slave is not None
         else "OpenMotics-thermostaat"
     )

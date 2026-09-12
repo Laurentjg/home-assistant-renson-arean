@@ -70,6 +70,16 @@ def source_app_runtime(app: str) -> str:
     return f"app:{app}:runtime"
 
 
+# The device underneath a healthy app (D-17). There is no status field for it
+# anywhere; the evidence is freshness. While the app keeps logging arrays that
+# can only come from the monobloc, the Modbus coupling demonstrably works.
+SOURCE_HARDWARE_HEATPUMP = "hardware:heatpump"
+HEATPUMP_ARRAYS = ("HP_UNIT/hp1", "HP_GLOBAL/0")
+# Both arrays appear about once a minute; three silent polls is itself abnormal.
+# Shorter makes the entity restless, longer makes it slow (§5.0).
+HEATPUMP_FRESHNESS = timedelta(minutes=3)
+
+
 # --- Apps (§2.2) -------------------------------------------------------------
 #
 # Apps are discovered at runtime (P-05); these names only bind the per-app
@@ -165,12 +175,18 @@ class HvacChannel:
     diagnostic: bool = False
     enabled_default: bool = True
     note: str | None = None
+    # The subsystem an input belongs to; while it is off the entity is created
+    # but disabled by default (§5.3, I-15).
+    subsystem: str | None = None
 
+
+SUBSYSTEM_DHW = "dhw"
+SUBSYSTEM_RECIRCULATION = "recirculation"
 
 # Output id (as reported by get_output_status) → channel.
 HVAC_OUTPUTS: dict[int, HvacChannel] = {
     0: HvacChannel(
-        key="relay_r1",
+        key="r1",
         channel="R1",
         direction="output",
         channel_type=CHANNEL_RELAY_DRY,
@@ -182,7 +198,7 @@ HVAC_OUTPUTS: dict[int, HvacChannel] = {
         wired=WIRED_YES,
     ),
     1: HvacChannel(
-        key="relay_r2",
+        key="r2",
         channel="R2",
         direction="output",
         channel_type=CHANNEL_RELAY_DRY,
@@ -194,7 +210,7 @@ HVAC_OUTPUTS: dict[int, HvacChannel] = {
         wired=WIRED_YES,
     ),
     2: HvacChannel(
-        key="relay_r3",
+        key="r3",
         channel="R3",
         direction="output",
         channel_type=CHANNEL_RELAY_230V,
@@ -207,7 +223,7 @@ HVAC_OUTPUTS: dict[int, HvacChannel] = {
         wired=WIRED_YES,
     ),
     3: HvacChannel(
-        key="relay_r4",
+        key="r4",
         channel="R4",
         direction="output",
         channel_type=CHANNEL_RELAY_230V,
@@ -220,7 +236,7 @@ HVAC_OUTPUTS: dict[int, HvacChannel] = {
         wired=WIRED_YES,
     ),
     4: HvacChannel(
-        key="relay_r5",
+        key="r5",
         channel="R5",
         direction="output",
         channel_type=CHANNEL_RELAY_230V,
@@ -273,10 +289,11 @@ HVAC_OUTPUTS: dict[int, HvacChannel] = {
     ),
 }
 
-# Input id (as used inside hvac_config) → channel. These channels have no value
-# source yet: the gateway does not expose them as sensors (V-03/V-04) and the
-# position mapping of the log arrays is not established (V-16). They appear in
-# the channel overview (§4.3) but carry no entity of their own.
+# Input id (as used inside hvac_config) → channel. The gateway does not expose
+# them as sensors (V-03/V-04); T3, IN1 and IN2 have a position in HP_HVAC/0.
+# T1, T2 and T4 have none — all twelve positions are taken — but they still get
+# an entity that stays unavailable, because an installation with hot water or
+# recirculation in use may well log a longer array (I-15).
 HVAC_INPUTS: dict[int, HvacChannel] = {
     0: HvacChannel(
         key="t1",
@@ -291,6 +308,7 @@ HVAC_INPUTS: dict[int, HvacChannel] = {
         signal_range="n.v.t.",
         wired=WIRED_UNKNOWN,
         note="Subsysteem uit: dhw_status staat op Disabled.",
+        subsystem=SUBSYSTEM_DHW,
     ),
     1: HvacChannel(
         key="t2",
@@ -305,6 +323,7 @@ HVAC_INPUTS: dict[int, HvacChannel] = {
         signal_range="n.v.t.",
         wired=WIRED_UNKNOWN,
         note="Subsysteem uit: dhw_status staat op Disabled.",
+        subsystem=SUBSYSTEM_DHW,
     ),
     2: HvacChannel(
         key="t3",
@@ -313,7 +332,7 @@ HVAC_INPUTS: dict[int, HvacChannel] = {
         channel_type=CHANNEL_NTC,
         electrical="NTC 5K",
         connector="type 2",
-        default_name="Zonetemperatuur",
+        default_name="Systeemwatertemperatuur",
         device_class="temperature",
         hvac_config_key="temperature_sensor",
         signal_range="n.v.t.",
@@ -332,6 +351,7 @@ HVAC_INPUTS: dict[int, HvacChannel] = {
         signal_range="n.v.t.",
         wired=WIRED_UNKNOWN,
         note="Subsysteem uit: has_recirculation staat op Off.",
+        subsystem=SUBSYSTEM_RECIRCULATION,
     ),
     4: HvacChannel(
         key="in1",
@@ -398,6 +418,12 @@ class SsrPosition:
     device_class: str | None = None
     unit: str | None = None
     diagnostic: bool = False
+    # None unless there is an answer to "which decision do I take on this series
+    # in half a year" (§5.9).
+    state_class: str | None = None
+
+
+STATE_CLASS_MEASUREMENT = "measurement"
 
 
 @dataclass(frozen=True)
@@ -435,7 +461,7 @@ SSR_ARRAYS: dict[str, SsrArray] = {
             SsrPosition(
                 index=7,
                 key="t3_temperature",
-                name="Zonetemperatuur",
+                name="Systeemwatertemperatuur",
                 confidence=CONFIDENCE_ASSUMED,
                 device_class="temperature",
                 unit="°C",
@@ -465,6 +491,7 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 confidence=CONFIDENCE_CONFIRMED,
                 device_class="pressure",
                 unit="bar",
+                state_class=STATE_CLASS_MEASUREMENT,
             ),
             SsrPosition(
                 index=11,
@@ -481,11 +508,16 @@ SSR_ARRAYS: dict[str, SsrArray] = {
         slug="hp_unit_hp1",
         length=25,
         positions=(
+            # 0 at rest, 30–72 while running, pinned at 30 = the lower
+            # modulation limit for minutes on end (2026-09-09).
             SsrPosition(
-                index=3,
-                key="operating_state",
-                name="Bedrijfstoestand",
+                index=12,
+                key="compressor_frequency",
+                name="Compressorfrequentie",
                 confidence=CONFIDENCE_ASSUMED,
+                device_class="frequency",
+                unit="Hz",
+                state_class=STATE_CLASS_MEASUREMENT,
             ),
             SsrPosition(
                 index=18,
@@ -494,6 +526,7 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 confidence=CONFIDENCE_ASSUMED,
                 device_class="temperature",
                 unit="°C",
+                state_class=STATE_CLASS_MEASUREMENT,
             ),
             SsrPosition(
                 index=19,
@@ -502,6 +535,7 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 confidence=CONFIDENCE_ASSUMED,
                 device_class="temperature",
                 unit="°C",
+                state_class=STATE_CLASS_MEASUREMENT,
             ),
             SsrPosition(
                 index=21,
@@ -515,9 +549,20 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 index=23,
                 key="mains_voltage",
                 name="Netspanning",
-                confidence=CONFIDENCE_ASSUMED,
+                confidence=CONFIDENCE_CONFIRMED,
                 device_class="voltage",
                 unit="V",
+                diagnostic=True,
+            ),
+            # Current drawn, not power: 6.9 kW electrical out of a 5 kW unit is
+            # impossible. No power is derived from V × A (D-16).
+            SsrPosition(
+                index=24,
+                key="current",
+                name="Opgenomen stroom",
+                confidence=CONFIDENCE_ASSUMED,
+                device_class="current",
+                unit="A",
                 diagnostic=True,
             ),
         ),
@@ -527,10 +572,21 @@ SSR_ARRAYS: dict[str, SsrArray] = {
         slug="hp_thermostat_0",
         length=4,
     ),
+    # Resolved by the cycle measurement of 2026-09-09: [outside temperature,
+    # operating mode, flow]. Index 1 is the live operating state — HP_UNIT/hp1
+    # index 3 read HEATING throughout, also with the compressor at rest (I-11).
     "HP_GLOBAL/0": SsrArray(
         key="HP_GLOBAL/0",
         slug="hp_global_0",
         length=3,
+        positions=(
+            SsrPosition(
+                index=1,
+                key="operating_state",
+                name="Bedrijfstoestand",
+                confidence=CONFIDENCE_CONFIRMED,
+            ),
+        ),
     ),
 }
 

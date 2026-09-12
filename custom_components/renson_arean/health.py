@@ -120,6 +120,23 @@ class SourceHealthTracker:
         )
 
 
+def freshness(
+    last_seen: datetime | None, since: datetime, now: datetime, limit: timedelta
+) -> bool | None:
+    """Whether evidence is recent enough to call a device reachable (D-17).
+
+    True while the last evidence is within `limit`, False once it is older — or
+    once `limit` has passed since `since` without any evidence at all. None
+    until then: right after a start, not having seen anything yet proves
+    nothing either way.
+    """
+    if last_seen is not None and now - last_seen <= limit:
+        return True
+    if now - (last_seen or since) > limit:
+        return False
+    return None
+
+
 def _suffix(reason: str | None) -> str:
     return f" {reason}" if reason else ""
 

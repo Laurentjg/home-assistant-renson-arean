@@ -12,6 +12,7 @@ from __future__ import annotations
 import ast
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from ..const import MODBUS_SENTINEL, SSR_ARRAYS, SSR_APP_VERSION
@@ -37,6 +38,9 @@ class SsrSnapshot:
     arrays: dict[str, list[Any]] = field(default_factory=dict)
     weather_temperature: float | None = None
     bypass_state: str | None = None
+    # When each accepted array was last logged — the evidence `hardware:<device>`
+    # rests on (§5.0, D-17).
+    seen: dict[str, datetime] = field(default_factory=dict)
     # Why an array was discarded — one line per reason, for the health tracker.
     rejected: tuple[str, ...] = ()
 
@@ -78,12 +82,13 @@ def parse_ssr(lines: list[LogLine], app_version: str | None) -> SsrSnapshot:
         )
 
     arrays: dict[str, list[Any]] = {}
+    seen: dict[str, datetime] = {}
     rejected: list[str] = []
     weather: float | None = None
     bypass: str | None = None
     pending_key: str | None = None
 
-    def accept(key: str, values: list[Any]) -> None:
+    def accept(key: str, values: list[Any], timestamp: datetime | None) -> None:
         layout = SSR_ARRAYS.get(key)
         if layout is None:
             rejected.append(f"onbekende SSR-array {key!r}")
@@ -94,6 +99,8 @@ def parse_ssr(lines: list[LogLine], app_version: str | None) -> SsrSnapshot:
             )
             return
         arrays[key] = _clean(values)
+        if timestamp is not None:
+            seen[key] = timestamp
 
     for line in lines:
         message = line.message
@@ -107,7 +114,7 @@ def parse_ssr(lines: list[LogLine], app_version: str | None) -> SsrSnapshot:
         if new_values:
             values = _literal(new_values.group("array"))
             if pending_key and values is not None:
-                accept(pending_key, values)
+                accept(pending_key, values, line.timestamp)
             pending_key = None
             continue
 
@@ -115,7 +122,7 @@ def parse_ssr(lines: list[LogLine], app_version: str | None) -> SsrSnapshot:
         if forced:
             values = _literal(forced.group("array"))
             if values is not None:
-                accept(forced.group("key"), values)
+                accept(forced.group("key"), values, line.timestamp)
             continue
 
         weather_match = WEATHER.match(message)
@@ -131,35 +138,34 @@ def parse_ssr(lines: list[LogLine], app_version: str | None) -> SsrSnapshot:
         arrays=arrays,
         weather_temperature=weather,
         bypass_state=bypass,
+        seen=seen,
         rejected=tuple(dict.fromkeys(rejected)),
     )
 
 
 @dataclass(frozen=True)
 class AppHealth:
-    """What an app's own log says about its hardware coupling (§7.2)."""
+    """What an app's own log says about itself (§7.2).
 
-    modbus_ok: bool | None = None
+    Deliberately no reachability flag: a failure line in a log is not a state.
+    `Could not enable Modbus` is logged by an app that has no Modbus at all, so
+    it stays a reason to read, never a verdict (§5.7). Whether the heat pump is
+    reachable follows from the freshness of its arrays (D-17).
+    """
+
     watchdog_restarts: int = 0
     reason: str | None = None
 
 
 def parse_app_health(lines: list[LogLine]) -> AppHealth:
-    """Read the Modbus and watchdog state out of an app log.
-
-    Returns `modbus_ok=None` when the log says nothing either way — silence is
-    not evidence of health, and pretending otherwise would hide the failure
-    this entity exists to show.
-    """
-    modbus_ok: bool | None = None
+    """Read the Modbus failure text and the watchdog restarts out of an app log."""
     restarts = 0
     reason: str | None = None
 
     for line in lines:
         if MODBUS_FAILURE in line.message:
-            modbus_ok = False
             reason = line.message
         if WATCHDOG_RESTART in line.message:
             restarts += 1
 
-    return AppHealth(modbus_ok=modbus_ok, watchdog_restarts=restarts, reason=reason)
+    return AppHealth(watchdog_restarts=restarts, reason=reason)
