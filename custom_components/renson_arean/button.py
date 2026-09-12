@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 class ReloadTopologyButton(GatewayEntity, ButtonEntity):
     """Re-read the modules and apps without waiting for the 15-minute cycle."""
 
+    _entity_domain = "button"
+
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     async def async_press(self) -> None:
@@ -38,7 +40,7 @@ async def async_setup_entry(
             ReloadTopologyButton(
                 runtime.topology,
                 runtime.devices.brain,
-                runtime.devices.brain_identifier,
+                runtime.devices.brain_origin,
                 "reload_topology",
                 "Herlaad topologie",
                 "get_modules_information",

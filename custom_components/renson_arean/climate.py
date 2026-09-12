@@ -59,19 +59,20 @@ class RensonThermostat(RensonEntity, ClimateEntity):
     _attr_max_temp = SETPOINT_MAX
     _attr_target_temperature_step = 0.5
     _attr_name = None
+    _entity_domain = "climate"
 
     def __init__(
         self,
         runtime: RensonRuntime,
         om_id: int,
         device,
-        identifier: str,
+        origin,
     ) -> None:
         """Bind the entity to one OpenMotics thermostat."""
         super().__init__(
             runtime.thermostat,
             device,
-            identifier,
+            origin,
             "climate",
             None,
             SOURCE_GATEWAY_CORE,
@@ -207,6 +208,6 @@ async def async_setup_entry(
     """Set up one climate entity per active OpenMotics thermostat."""
     runtime = entry.runtime_data
     async_add_entities(
-        RensonThermostat(runtime, om_id, device, identifier)
-        for om_id, (device, identifier) in runtime.devices.thermostats.items()
+        RensonThermostat(runtime, om_id, device, origin)
+        for om_id, (device, origin) in runtime.devices.thermostats.items()
     )

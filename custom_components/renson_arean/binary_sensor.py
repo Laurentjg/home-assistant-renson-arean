@@ -28,17 +28,20 @@ if TYPE_CHECKING:
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
     from . import RensonConfigEntry, RensonRuntime
+    from .const import Origin
     from .coordinators import RensonCoordinator
 
 
 class RensonBinarySensor(RensonEntity, BinarySensorEntity):
     """A binary sensor whose value and availability are supplied as callables."""
 
+    _entity_domain = "binary_sensor"
+
     def __init__(
         self,
         coordinator: RensonCoordinator,
         device: DeviceInfo,
-        device_identifier: str,
+        origin: Origin,
         key: str,
         name: str,
         source: str,
@@ -50,9 +53,7 @@ class RensonBinarySensor(RensonEntity, BinarySensorEntity):
         attributes_fn: Callable[[Any], dict[str, Any]] | None = None,
     ) -> None:
         """Bind the sensor to its source."""
-        super().__init__(
-            coordinator, device, device_identifier, key, name, source, endpoint
-        )
+        super().__init__(coordinator, device, origin, key, name, source, endpoint)
         self._is_on_fn = is_on_fn
         self._attributes_fn = attributes_fn
         self._attr_device_class = device_class
@@ -80,18 +81,19 @@ class HvacOutputBinarySensor(RensonChannelEntity, BinarySensorEntity):
     stops; only the function label depends on `hvac_config` (§5.0).
     """
 
-    def __init__(self, coordinator, device, identifier, channel, address, output_id):
+    _entity_domain = "binary_sensor"
+
+    def __init__(self, coordinator, device, origin, channel, address, output_id):
         """Bind the sensor to one output."""
         super().__init__(
             coordinator,
             device,
-            identifier,
+            origin,
             channel,
             HVAC_MODULE_MODEL,
             address,
             SOURCE_GATEWAY_CORE,
             "get_output_status",
-            device_slug="hvac_module",
         )
         self._output_id = output_id
         if channel.diagnostic:
@@ -119,14 +121,14 @@ class HvacOutputBinarySensor(RensonChannelEntity, BinarySensorEntity):
 
 
 def _app_entities(
-    runtime: RensonRuntime, app: str, device: DeviceInfo, identifier: str
+    runtime: RensonRuntime, app: str, device: DeviceInfo, origin: Origin
 ) -> list[RensonBinarySensor]:
     """The two entities every app device gets (§5.5–5.7)."""
     return [
         RensonBinarySensor(
             runtime.topology,
             device,
-            identifier,
+            origin,
             "running",
             "App actief",
             source_app_runtime(app),
@@ -140,7 +142,7 @@ def _app_entities(
         RensonBinarySensor(
             runtime.config,
             device,
-            identifier,
+            origin,
             "source_available",
             "Brondata beschikbaar",
             source_app_config(app),
@@ -177,7 +179,7 @@ async def async_setup_entry(
                 HvacOutputBinarySensor(
                     runtime.state,
                     devices.hvac,
-                    devices.hvac_identifier,
+                    devices.hvac_origin,
                     channel,
                     devices.hvac_address,
                     output_id,
@@ -187,7 +189,7 @@ async def async_setup_entry(
             RensonBinarySensor(
                 runtime.topology,
                 devices.hvac,
-                devices.hvac_identifier,
+                devices.hvac_origin,
                 "module_present",
                 "Module aanwezig",
                 SOURCE_GATEWAY_CORE,
@@ -209,7 +211,7 @@ async def async_setup_entry(
             RensonBinarySensor(
                 runtime.state,
                 devices.brain,
-                devices.brain_identifier,
+                devices.brain_origin,
                 f"input_{input_id}",
                 f"Ingang {input_id + 1}",
                 SOURCE_GATEWAY_CORE,
@@ -220,16 +222,16 @@ async def async_setup_entry(
             )
         )
 
-    for app, (device, identifier) in devices.apps.items():
-        entities.extend(_app_entities(runtime, app, device, identifier))
+    for app, (device, origin) in devices.apps.items():
+        entities.extend(_app_entities(runtime, app, device, origin))
 
     if APP_HEATPUMP in devices.apps:
-        device, identifier = devices.apps[APP_HEATPUMP]
+        device, origin = devices.apps[APP_HEATPUMP]
         entities.append(
             RensonBinarySensor(
                 runtime.state,
                 device,
-                identifier,
+                origin,
                 "modbus_healthy",
                 "Modbus-verbinding gezond",
                 source_app_log(APP_HEATPUMP),
@@ -246,7 +248,7 @@ async def async_setup_entry(
             RensonBinarySensor(
                 runtime.state,
                 devices.heatpump,
-                devices.heatpump_identifier,
+                devices.heatpump_origin,
                 "reachable",
                 "Warmtepomp bereikbaar",
                 source_app_log(APP_HEATPUMP),
@@ -257,12 +259,12 @@ async def async_setup_entry(
             )
         )
 
-    for om_id, (device, identifier) in devices.thermostats.items():
+    for om_id, (device, origin) in devices.thermostats.items():
         entities.append(
             RensonBinarySensor(
                 runtime.thermostat,
                 device,
-                identifier,
+                origin,
                 "reachable",
                 "Thermostaat bereikbaar",
                 SOURCE_GATEWAY_CORE,
@@ -276,7 +278,7 @@ async def async_setup_entry(
             RensonBinarySensor(
                 runtime.thermostat,
                 device,
-                identifier,
+                origin,
                 "hysteresis_active",
                 "Hysterese actief",
                 SOURCE_GATEWAY_CORE,
@@ -289,7 +291,7 @@ async def async_setup_entry(
         )
 
     if APP_LOGIC in devices.apps:
-        device, identifier = devices.apps[APP_LOGIC]
+        device, origin = devices.apps[APP_LOGIC]
         for key, name, field in (
             ("silent_mode", "Stille modus actief", "silent_mode"),
             (
@@ -303,7 +305,7 @@ async def async_setup_entry(
                 RensonBinarySensor(
                     runtime.config,
                     device,
-                    identifier,
+                    origin,
                     key,
                     name,
                     source_app_config(APP_LOGIC),

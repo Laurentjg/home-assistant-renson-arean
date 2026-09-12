@@ -22,11 +22,18 @@ from .const import (
     CONNECTED_TO_HVAC,
     HEATPUMP_SLAVE,
     MANUFACTURER,
+    Origin,
     app_id,
+    app_origin,
     brain_id,
+    gateway_origin,
     heatpump_id,
+    heatpump_origin,
+    hvac_origin,
     module_id,
+    ssr_origin,
     thermostat_id,
+    thermostat_origin,
 )
 
 if TYPE_CHECKING:
@@ -121,14 +128,15 @@ class DeviceSet:
     """
 
     brain: DeviceInfo
-    brain_identifier: str
-    apps: dict[str, tuple[DeviceInfo, str]] = field(default_factory=dict)
-    thermostats: dict[int, tuple[DeviceInfo, str]] = field(default_factory=dict)
+    brain_origin: Origin
+    ssr_origin: Origin
+    apps: dict[str, tuple[DeviceInfo, Origin]] = field(default_factory=dict)
+    thermostats: dict[int, tuple[DeviceInfo, Origin]] = field(default_factory=dict)
     hvac: DeviceInfo | None = None
-    hvac_identifier: str | None = None
+    hvac_origin: Origin | None = None
     hvac_address: str | None = None
     heatpump: DeviceInfo | None = None
-    heatpump_identifier: str | None = None
+    heatpump_origin: Origin | None = None
 
 
 def build_devices(
@@ -145,49 +153,50 @@ def build_devices(
     )
 
     hvac_info: DeviceInfo | None = None
-    hvac_identifier: str | None = None
     hvac_address: str | None = None
+    hvac_module_identifier: str | None = None
     module = topology.hvac_module
     if module is not None:
         hvac_address = module.address
-        hvac_identifier = module_id(entry_id, module.address)
+        hvac_module_identifier = module_id(entry_id, module.address)
         hvac_info = hvac_module_device(
             entry_id, module.address, module.firmware_version, module.serial_number
         )
 
     apps = {
-        name: (app_device(entry_id, name, info.version), app_id(entry_id, name))
+        name: (app_device(entry_id, name, info.version), app_origin(entry_id, name))
         for name, info in topology.apps.items()
     }
 
     via = (
-        hvac_identifier
-        if connected_to == CONNECTED_TO_HVAC and hvac_identifier
+        hvac_module_identifier
+        if connected_to == CONNECTED_TO_HVAC and hvac_module_identifier
         else brain_id(entry_id)
     )
     thermostat_devices = {
         om_id: (
             thermostat_device(entry_id, om_id, bindings.get(om_id), via),
-            thermostat_id(entry_id, om_id),
+            thermostat_origin(entry_id, om_id),
         )
         for om_id in thermostats
     }
 
     # The heat pump always exists, whatever the log yields (D-02).
     heatpump_info: DeviceInfo | None = None
-    heatpump_identifier: str | None = None
     if APP_HEATPUMP in topology.apps:
         heatpump_info = heatpump_device(entry_id, APP_HEATPUMP, HEATPUMP_SLAVE)
-        heatpump_identifier = heatpump_id(entry_id, HEATPUMP_SLAVE)
 
     return DeviceSet(
         brain=brain,
-        brain_identifier=brain_id(entry_id),
+        brain_origin=gateway_origin(entry_id),
+        ssr_origin=ssr_origin(entry_id),
         apps=apps,
         thermostats=thermostat_devices,
         hvac=hvac_info,
-        hvac_identifier=hvac_identifier,
+        hvac_origin=hvac_origin(entry_id) if hvac_info is not None else None,
         hvac_address=hvac_address,
         heatpump=heatpump_info,
-        heatpump_identifier=heatpump_identifier,
+        heatpump_origin=(
+            heatpump_origin(entry_id) if heatpump_info is not None else None
+        ),
     )

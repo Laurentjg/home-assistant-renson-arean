@@ -40,8 +40,6 @@ from .coordinators.thermostat import ThermostatCoordinator
 from .coordinators.topology import TopologyCoordinator
 from .devices import DeviceSet, build_devices
 from .health import SourceHealthTracker
-from .migration import async_migrate_entry as _async_migrate_entry
-from .migration import async_migrate_outputs
 from .thermostat.confirm import ConfirmationWindow
 
 if TYPE_CHECKING:
@@ -106,12 +104,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: RensonConfigEntry) -> bo
         _interval(entry, CONF_INTERVAL_TOPOLOGY, DEFAULT_INTERVAL_TOPOLOGY),
     )
     await topology.async_config_entry_first_refresh()
-
-    # The output entities of 2026.6.0 can only be converted once the HVAC
-    # module's bus address is known (§11).
-    hvac_module = topology.data.hvac_module if topology.data else None
-    if hvac_module is not None:
-        await async_migrate_outputs(hass, entry, hvac_module.address)
 
     thermostat = ThermostatCoordinator(
         hass,
@@ -180,11 +172,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: RensonConfigEntry) -> bo
 async def async_unload_entry(hass: HomeAssistant, entry: RensonConfigEntry) -> bool:
     """Unload the config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-
-async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Migrate a 2026.6.0 entry to the 2026.9.0 conventions (§11)."""
-    return await _async_migrate_entry(hass, entry)
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:

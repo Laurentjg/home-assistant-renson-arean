@@ -3,8 +3,8 @@
 Two things live here that §4.3 and §5.0 insist on:
 
 * identity is physical and the label is functional — the unique_id and the
-  suggested entity_id follow the channel, the display name follows the
-  function, and the user's own name always wins;
+  entity_id follow the datapoint, the display name follows the function, and
+  the user's own name always wins;
 * an entity is unavailable as soon as its source is, and never quietly borrows
   a value from another source or freezes on the last known one.
 """
@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import slugify
 
 from .const import (
     CONFIDENCE_CONFIRMED,
@@ -25,40 +26,65 @@ from .const import (
 if TYPE_CHECKING:
     from homeassistant.helpers.device_registry import DeviceInfo
 
-    from .const import HvacChannel
+    from .const import HvacChannel, Origin
     from .coordinators import RensonCoordinator
+
+
+def entity_id_for(domain: str, origin: Origin, key: str) -> str:
+    """The entity_id `RensonEntity` registers for one datapoint.
+
+    Exported so the channel overview can advertise the real ids rather than
+    rebuild them from a rule that would drift apart from this one (§4.3).
+
+    A key that merely repeats the platform adds nothing, so the primary entity
+    of a device becomes `climate.thermostat_0` and not
+    `climate.thermostat_0_climate`.
+    """
+    suffix = "" if key == domain else f"_{key}"
+    return f"{domain}.{slugify(origin.slug + suffix)}"
 
 
 class RensonEntity(CoordinatorEntity):
     """Every entity of this integration.
 
-    `device_identifier` is the same string the device carries in its
-    `identifiers`, so a unique_id can always be traced back to its device
-    (§4.1).
+    Identity comes from the `Origin` — what the datapoint *is* — and never from
+    the device it is displayed on, so re-parenting an entity costs nothing
+    (§4.3). `device` therefore only decides where it shows up.
+
+    The entity_id is set here rather than left to Home Assistant. That is the
+    one mechanism that decouples it from the display name: `entity_platform`
+    honours an entity_id an entity has set itself, and only falls back to
+    "<device name> <entity name>" when it has not. The `suggested_object_id`
+    property is no use for this — it is read-only in core and returns the name.
+    Whether the entity_id is free is still checked by the registry, so a
+    collision cannot silently overwrite anything.
     """
 
     _attr_has_entity_name = True
+
+    # Set by each platform's base class; without it Home Assistant generates
+    # the entity_id from the display name, which is what §4.3 avoids.
+    _entity_domain: str = ""
 
     def __init__(
         self,
         coordinator: RensonCoordinator,
         device: DeviceInfo,
-        device_identifier: str,
+        origin: Origin,
         key: str,
         name: str | None,
         source: str,
         source_endpoint: str | None = None,
-        suggested_object_id: str | None = None,
     ) -> None:
-        """Bind the entity to its device and its source."""
+        """Bind the entity to its datapoint, its device and its source."""
         super().__init__(coordinator)
         self._attr_device_info = device
-        self._attr_unique_id = f"{device_identifier}:{key}"
+        self._attr_unique_id = f"{origin.uid}:{key}"
         self._attr_name = name
         self._source = source
         self._source_endpoint = source_endpoint
-        if suggested_object_id:
-            self._attr_suggested_object_id = suggested_object_id
+        if self._entity_domain:
+            self.entity_id = entity_id_for(self._entity_domain, origin, key)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -89,26 +115,22 @@ class RensonChannelEntity(RensonEntity):
         self,
         coordinator: RensonCoordinator,
         device: DeviceInfo,
-        device_identifier: str,
+        origin: Origin,
         channel: HvacChannel,
         module_model: str,
         module_address: str,
         source: str,
         source_endpoint: str | None = None,
-        device_slug: str = "",
     ) -> None:
         """Bind the entity to one channel of one module."""
         super().__init__(
             coordinator,
             device,
-            device_identifier,
+            origin,
             channel.key,
             channel.default_name,
             source,
             source_endpoint,
-            suggested_object_id=(
-                f"{device_slug}_{channel.channel.lower()}" if device_slug else None
-            ),
         )
         self._channel = channel
         self._module_model = module_model
@@ -158,7 +180,7 @@ class GatewayEntity(RensonEntity):
         self,
         coordinator: RensonCoordinator,
         device: DeviceInfo,
-        device_identifier: str,
+        origin: Origin,
         key: str,
         name: str,
         endpoint: str,
@@ -167,7 +189,7 @@ class GatewayEntity(RensonEntity):
         super().__init__(
             coordinator,
             device,
-            device_identifier,
+            origin,
             key,
             name,
             SOURCE_GATEWAY_CORE,

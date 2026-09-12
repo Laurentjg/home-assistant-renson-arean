@@ -29,9 +29,6 @@ CONF_INTERVAL_STATE = "interval_state"
 CONF_INTERVAL_CONFIG = "interval_config"
 CONF_INTERVAL_TOPOLOGY = "interval_topology"
 
-# 2026.6.0 key, read once by the migration (§11.3)
-CONF_MODBUS_SLAVE_LEGACY = "modbus_slave"
-
 DEFAULT_THERMOSTAT_SLAVE = 41
 DEFAULT_VERIFY_SSL = False
 
@@ -538,51 +535,6 @@ SSR_ARRAYS: dict[str, SsrArray] = {
 }
 
 
-# --- Migration from 2026.6.0 (§11.2) ----------------------------------------
-#
-# 2026.6.0 rooted every unique_id on `get_gateway_serial()`, which reads a field
-# that does not exist and therefore always returned the empty string (V-17).
-# The old ids are consequently fully predictable — `"_climate"`, `"_output_3"` —
-# but the match is on the suffix so an installation where the serial happened to
-# be filled in migrates just as well.
-#
-# Value `None` means: no successor. Those entities are left alone, never
-# silently deleted, and are named in the release notes (§11.3 step 5).
-
-LEGACY_THERMOSTAT_ID = 0
-
-# suffix → key on the app device of `rensonheatpumplogic`
-LEGACY_LOGIC_KEYS: dict[str, str | None] = {
-    "_silent_mode_recurrent": "silent_mode_recurrent",
-    "_silent_max_time": "silent_max_time",
-    "_silent_start_hour": "silent_start_hour",
-    "_silent_running_time": "silent_running_time",
-    "_backup_heater": "backup_heater",
-    "_energy_source": "energy_source",
-    "_hp_state": "state",
-    "_commissioning_state": "commissioning_state",
-    # `switch.silent_mode` becomes a binary_sensor. Home Assistant does not move
-    # an entity between platforms, so there is nothing to migrate: the old
-    # entity stays behind and a new one appears (§11.2).
-    "_silent_mode": None,
-}
-
-# suffix → key on the thermostat device
-LEGACY_THERMOSTAT_KEYS: dict[str, str] = {
-    "_climate": "climate",
-    "_steering_power": "steering_power",
-}
-
-# suffix → key on the HVAC module device
-LEGACY_MODULE_KEYS: dict[str, str | None] = {
-    f"_output_{output_id}": channel.key
-    for output_id, channel in HVAC_OUTPUTS.items()
-}
-# Read the dimmer value of output 6 as a percentage. Wrong channel and a
-# constant value, so there is nothing to migrate to (§11.2).
-LEGACY_MODULE_KEYS["_bypass_valve"] = None
-
-
 # --- Identifiers (§4.1) ------------------------------------------------------
 #
 # The root is the config entry's `entry_id` (D-13): the gateway has no serial
@@ -614,31 +566,74 @@ def heatpump_id(entry_id: str, slave: int) -> str:
     return f"{entry_id}:modbus:{slave}"
 
 
-def legacy_target(
-    unique_id: str, entry_id: str, hvac_address: str | None
-) -> str | None:
-    """Return the 2026.9.0 unique_id for a 2026.6.0 one, or None if there is none.
+# --- Origins (§4.3) ----------------------------------------------------------
+#
+# An identifier above says which *device* something is. An origin says what a
+# *datapoint* is, and those are not the same question.
+#
+# The device an entity is displayed on can move. Renson may relocate a
+# datapoint, and the cycle measurement of 2026-09-09 already reassigned two of
+# them by itself. Home Assistant does not mind: change `device_info` and the
+# registry re-parents the entity, which keeps both its entity_id and its
+# history. But that only holds if the identity does not mention the device —
+# and that is exactly what an origin guarantees.
 
-    Matching is on the suffix, so it works with and without a serial prefix.
+
+@dataclass(frozen=True)
+class Origin:
+    """What a datapoint is, independent of the device it is shown on.
+
+    `uid` roots the unique_id and therefore carries the entry_id (D-13).
+    `slug` roots the entity_id and must stay readable, so it carries no
+    entry_id and no bus address.
     """
-    for suffix, key in LEGACY_THERMOSTAT_KEYS.items():
-        if unique_id.endswith(suffix):
-            return f"{thermostat_id(entry_id, LEGACY_THERMOSTAT_ID)}:{key}"
 
-    for suffix, logic_key in LEGACY_LOGIC_KEYS.items():
-        if unique_id.endswith(suffix):
-            if logic_key is None:
-                return None
-            return f"{app_id(entry_id, APP_LOGIC)}:{logic_key}"
+    uid: str
+    slug: str
 
-    if hvac_address is not None:
-        for suffix, module_key in LEGACY_MODULE_KEYS.items():
-            if unique_id.endswith(suffix):
-                if module_key is None:
-                    return None
-                return f"{module_id(entry_id, hvac_address)}:{module_key}"
 
-    return None
+def gateway_origin(entry_id: str) -> Origin:
+    """The gateway itself — independent of every app (§5.2)."""
+    return Origin(f"{entry_id}:gateway", "brain_module")
+
+
+def hvac_origin(entry_id: str) -> Origin:
+    """The channels of the HVAC module.
+
+    The energybus address is deliberately absent. It identifies the *module*
+    well enough (see `module_id`), but replacing the module would then rewrite
+    the identity of all fourteen channels — while R3 stays R3 on the new one.
+    """
+    return Origin(f"{entry_id}:hvac", "hvac_module")
+
+
+def thermostat_origin(entry_id: str, om_id: int) -> Origin:
+    """One OpenMotics thermostat, read over L2 (§5.4)."""
+    return Origin(f"{entry_id}:thermostat:{om_id}", f"thermostat_{om_id}")
+
+
+def app_origin(entry_id: str, app: str) -> Origin:
+    """The configuration and runtime of one Brain app. Names are verbatim."""
+    return Origin(f"{entry_id}:app:{app}", f"app_{app.lower()}")
+
+
+def heatpump_origin(entry_id: str) -> Origin:
+    """The heat pump itself.
+
+    The Modbus slave address is absent for the same reason as the bus address
+    in `hvac_origin`: it addresses the unit, it does not identify its readings.
+    """
+    return Origin(f"{entry_id}:heatpump", "heatpump")
+
+
+def ssr_origin(entry_id: str) -> Origin:
+    """The raw array positions of the app log (D-14, V-16).
+
+    These hang on no device at all: they are the measuring instrument used to
+    establish what the remaining positions mean. They are *shown* on the app
+    device, which is a display choice and not an identity.
+    """
+    return Origin(f"{entry_id}:ssr", "ssr")
 
 
 # The heat pump sits on Modbus slave 1; `rensonheatpumplogic` reports it in

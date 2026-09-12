@@ -26,7 +26,7 @@ from .const import (
     source_app_config,
     source_app_log,
 )
-from .entity import RensonEntity
+from .entity import RensonEntity, entity_id_for
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
     from . import RensonConfigEntry, RensonRuntime
-    from .const import SsrArray, SsrPosition
+    from .const import Origin, SsrArray, SsrPosition
     from .coordinators import RensonCoordinator
 
 DIAGNOSTIC = EntityCategory.DIAGNOSTIC
@@ -43,11 +43,13 @@ DIAGNOSTIC = EntityCategory.DIAGNOSTIC
 class RensonSensor(RensonEntity, SensorEntity):
     """A sensor whose value is supplied as a callable over its coordinator data."""
 
+    _entity_domain = "sensor"
+
     def __init__(
         self,
         coordinator: RensonCoordinator,
         device: DeviceInfo,
-        device_identifier: str,
+        origin: Origin,
         key: str,
         name: str,
         source: str,
@@ -60,9 +62,7 @@ class RensonSensor(RensonEntity, SensorEntity):
         attributes_fn: Callable[[Any], dict[str, Any]] | None = None,
     ) -> None:
         """Bind the sensor to its source."""
-        super().__init__(
-            coordinator, device, device_identifier, key, name, source, endpoint
-        )
+        super().__init__(coordinator, device, origin, key, name, source, endpoint)
         self._value_fn = value_fn
         self._attributes_fn = attributes_fn
         self._attr_device_class = device_class
@@ -93,13 +93,13 @@ class SsrPositionSensor(RensonSensor):
     sentinel has already been turned into no value at all (S-01).
     """
 
-    def __init__(self, coordinator, device, identifier, array: SsrArray, index: int):
+    def __init__(self, coordinator, device, origin, array: SsrArray, index: int):
         """Bind the sensor to one array position."""
         super().__init__(
             coordinator,
             device,
-            identifier,
-            f"ssr:{array.slug}:{index + 1}",
+            origin,
+            f"{array.slug}:{index + 1}",
             f"{array.key} waarde {index + 1}",
             source_app_log(APP_LOGIC),
             lambda data, key=array.key, i=index: _raw(data.ssr.value(key, i)),
@@ -131,7 +131,7 @@ def _position_attributes(array: SsrArray, index: int) -> dict[str, Any]:
 def _ssr_sensor(
     runtime: RensonRuntime,
     device: DeviceInfo,
-    identifier: str,
+    origin: Origin,
     array_key: str,
     position: SsrPosition,
 ) -> RensonSensor:
@@ -139,7 +139,7 @@ def _ssr_sensor(
     return RensonSensor(
         runtime.state,
         device,
-        identifier,
+        origin,
         position.key,
         position.name,
         source_app_log(APP_LOGIC),
@@ -165,12 +165,12 @@ def _ssr_sensor(
 
 def _brain_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
     devices = runtime.devices
-    device, identifier = devices.brain, devices.brain_identifier
+    device, origin = devices.brain, devices.brain_origin
     return [
         RensonSensor(
             runtime.topology,
             device,
-            identifier,
+            origin,
             "gateway_version",
             "Firmwareversie",
             SOURCE_GATEWAY_CORE,
@@ -182,7 +182,7 @@ def _brain_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
         RensonSensor(
             runtime.topology,
             device,
-            identifier,
+            origin,
             "master_version",
             "Masterversie",
             SOURCE_GATEWAY_CORE,
@@ -194,7 +194,7 @@ def _brain_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
         RensonSensor(
             runtime.topology,
             device,
-            identifier,
+            origin,
             "updates_available",
             "Update beschikbaar",
             SOURCE_GATEWAY_CORE,
@@ -220,7 +220,7 @@ def _brain_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
         RensonSensor(
             runtime.topology,
             device,
-            identifier,
+            origin,
             "system_bus",
             "Systeembus",
             SOURCE_GATEWAY_CORE,
@@ -261,7 +261,9 @@ def _channel_overview(runtime: RensonRuntime) -> RensonSensor:
                 "id": output_id,
                 "function": channel.default_name,
                 "source": SOURCE_GATEWAY_CORE,
-                "entity": f"binary_sensor.hvac_module_{channel.channel.lower()}",
+                "entity": entity_id_for(
+                    "binary_sensor", devices.hvac_origin, channel.key
+                ),
                 "wired": channel.wired,
             }
         )
@@ -275,7 +277,9 @@ def _channel_overview(runtime: RensonRuntime) -> RensonSensor:
                 "function": channel.default_name,
                 "source": source_app_log(APP_LOGIC),
                 "entity": (
-                    f"sensor.hvac_module_{position.key}" if position else None
+                    entity_id_for("sensor", devices.hvac_origin, position.key)
+                    if position
+                    else None
                 ),
                 "wired": channel.wired,
             }
@@ -285,7 +289,7 @@ def _channel_overview(runtime: RensonRuntime) -> RensonSensor:
     return RensonSensor(
         runtime.state,
         devices.hvac,
-        devices.hvac_identifier,
+        devices.hvac_origin,
         "channel_overview",
         "Kanaaloverzicht",
         SOURCE_GATEWAY_CORE,
@@ -314,7 +318,7 @@ def _input_position(channel_key: str) -> SsrPosition | None:
 
 def _thermostat_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
     sensors: list[RensonSensor] = []
-    for om_id, (device, identifier) in runtime.devices.thermostats.items():
+    for om_id, (device, origin) in runtime.devices.thermostats.items():
         for key, name, getter, device_class, unit, category in (
             (
                 "room_temperature",
@@ -353,7 +357,7 @@ def _thermostat_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
                 RensonSensor(
                     runtime.thermostat,
                     device,
-                    identifier,
+                    origin,
                     key,
                     name,
                     SOURCE_GATEWAY_CORE,
@@ -370,7 +374,7 @@ def _thermostat_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
 
 
 def _logic_config_sensors(
-    runtime: RensonRuntime, device: DeviceInfo, identifier: str
+    runtime: RensonRuntime, device: DeviceInfo, origin: Origin
 ) -> list[RensonSensor]:
     fields = (
         ("silent_start_hour", "Starttijd stille modus", "silent_mode_start_hour", None, True),
@@ -414,7 +418,7 @@ def _logic_config_sensors(
         RensonSensor(
             runtime.config,
             device,
-            identifier,
+            origin,
             key,
             name,
             source_app_config(APP_LOGIC),
@@ -444,7 +448,7 @@ async def async_setup_entry(
             RensonSensor(
                 runtime.topology,
                 devices.hvac,
-                devices.hvac_identifier,
+                devices.hvac_origin,
                 "module_firmware",
                 "Firmwareversie module",
                 SOURCE_GATEWAY_CORE,
@@ -462,14 +466,14 @@ async def async_setup_entry(
         for position in SSR_ARRAYS["HP_HVAC/0"].positions:
             entities.append(
                 _ssr_sensor(
-                    runtime, devices.hvac, devices.hvac_identifier, "HP_HVAC/0", position
+                    runtime, devices.hvac, devices.hvac_origin, "HP_HVAC/0", position
                 )
             )
         entities.append(
             RensonSensor(
                 runtime.state,
                 devices.hvac,
-                devices.hvac_identifier,
+                devices.hvac_origin,
                 "bypass_state",
                 "Bypass-stand",
                 source_app_log(APP_LOGIC),
@@ -485,7 +489,7 @@ async def async_setup_entry(
                 _ssr_sensor(
                     runtime,
                     devices.heatpump,
-                    devices.heatpump_identifier,
+                    devices.heatpump_origin,
                     "HP_UNIT/hp1",
                     position,
                 )
@@ -494,7 +498,7 @@ async def async_setup_entry(
             RensonSensor(
                 runtime.state,
                 devices.heatpump,
-                devices.heatpump_identifier,
+                devices.heatpump_origin,
                 "outside_temperature",
                 "Buitentemperatuur",
                 source_app_log(APP_LOGIC),
@@ -514,7 +518,7 @@ async def async_setup_entry(
             RensonSensor(
                 runtime.config,
                 devices.heatpump,
-                devices.heatpump_identifier,
+                devices.heatpump_origin,
                 "warranty_number",
                 "Garantienummer",
                 source_app_config(APP_LOGIC),
@@ -529,12 +533,12 @@ async def async_setup_entry(
             )
         )
 
-    for app, (device, identifier) in devices.apps.items():
+    for app, (device, origin) in devices.apps.items():
         entities.append(
             RensonSensor(
                 runtime.topology,
                 device,
-                identifier,
+                origin,
                 "version",
                 "App-versie",
                 SOURCE_GATEWAY_CORE,
@@ -548,18 +552,20 @@ async def async_setup_entry(
         )
 
     if APP_LOGIC in devices.apps:
-        device, identifier = devices.apps[APP_LOGIC]
-        entities.extend(_logic_config_sensors(runtime, device, identifier))
+        device, origin = devices.apps[APP_LOGIC]
+        entities.extend(_logic_config_sensors(runtime, device, origin))
         # Every position of every array, under a neutral name, so the meaning of
         # the unmapped ones can be established by correlation later (V-16).
         for array in SSR_ARRAYS.values():
             for index in range(array.length):
                 entities.append(
-                    SsrPositionSensor(runtime.state, device, identifier, array, index)
+                    SsrPositionSensor(
+                        runtime.state, device, devices.ssr_origin, array, index
+                    )
                 )
 
     if APP_THERMOSTAT in devices.apps:
-        device, identifier = devices.apps[APP_THERMOSTAT]
+        device, origin = devices.apps[APP_THERMOSTAT]
         for key, name, getter, unit in (
             ("poll_interval", "Poll-interval", lambda c: c.poll_interval, "s"),
             (
@@ -585,7 +591,7 @@ async def async_setup_entry(
                 RensonSensor(
                     runtime.config,
                     device,
-                    identifier,
+                    origin,
                     key,
                     name,
                     source_app_config(APP_THERMOSTAT),
@@ -602,7 +608,7 @@ async def async_setup_entry(
             )
 
     if APP_HEATPUMP in devices.apps:
-        device, identifier = devices.apps[APP_HEATPUMP]
+        device, origin = devices.apps[APP_HEATPUMP]
         for key, name, getter in (
             ("modbus_address", "Modbus-adres warmtepomp", lambda c: c.modbus_address),
             ("device_name", "Naam Modbus-device", lambda c: c.device_name),
@@ -611,7 +617,7 @@ async def async_setup_entry(
                 RensonSensor(
                     runtime.config,
                     device,
-                    identifier,
+                    origin,
                     key,
                     name,
                     source_app_config(APP_HEATPUMP),

@@ -16,8 +16,8 @@ A fully local Home Assistant custom integration for the **Renson Arean heat pump
 |---|---|---|
 | Room temperature, setpoint, preset, heating/cooling | ✅ | ✅ |
 | Status of the HVAC module's valves and pumps | ✅ | ✅ |
-| System pressure and zone temperature | ✅ | ✅ |
-| Heat pump flow, return and operating state | ✅ | ✅ |
+| System pressure and system water temperature | ✅ | ✅ |
+| Heat pump flow, return, compressor frequency, operating state and reachability | ✅ | ✅ |
 | Silent mode, backup heater, control parameters | read-only | read-only |
 | Module and app versions, firmware updates available | ✅ | ✅ |
 | Edit preset temperatures (what "away" means in degrees) | ❌ | ❌ cloud only |
@@ -32,7 +32,7 @@ The integration mirrors how the installation is actually built, rather than pres
 ```
 Brain module                        the controller: firmware, system bus, updates
 ├── HVAC module                     the DIN-rail box with the relays and sensor inputs
-├── Thermostaat 0                   the wall thermostat — this is your climate card
+├── Thermostaat 0                   the thermostat zone (wall thermostat + controller) — your climate card
 ├── Brain-App RensonThermostat      the driver for the wall thermostat
 ├── Brain-App rensonheatpumplogic   the control logic
 │   └── (raw log values)
@@ -42,7 +42,11 @@ Brain module                        the controller: firmware, system bus, update
 
 ### Thermostaat — your main card
 
-`climate.thermostaat_0` shows room temperature, setpoint, preset and heating/cooling mode. Alongside it are room temperature, steering power, the active preset and the thermostat's operating state.
+`climate.thermostat_0` shows room temperature, setpoint, preset, heating/cooling mode, and whether the thermostat is calling for heat right now. Alongside it are room temperature, the active preset and whether the thermostat is switched on.
+
+Heating/cooling is a setting of the **thermostat group**, not of one thermostat: changing it on one card changes it for every thermostat in that group.
+
+The control internals — hysteresis and steering power — are not on this device. They belong to the controller running on the Brain, and the wall thermostat has no register for them, so they appear under **Brain module** as diagnostics.
 
 Presets are `schedule`, `away` and `manual`, shown in your own language. The internal values are unchanged, so existing automations that use `preset_mode: away` keep working.
 
@@ -63,9 +67,11 @@ One binary sensor per output channel. The entity id follows the **physical chann
 
 That split is deliberate: if it later turns out R3 switches something other than a three-way valve, only the label is wrong. Your automations keep working, and you can rename the entity yourself in two clicks.
 
+The same rule holds one level up: an entity id never names the *device* it is shown on, only the channel or datapoint it reads. So if a measurement turns out to belong to a different device than first assumed, the entity moves without its id changing.
+
 Every one of these carries the wiring story in its attributes — what kind of contact it is, what may be connected, which connector it sits on, and how sure the function label is. The **Kanaaloverzicht** sensor holds the whole table at once, including which source each channel depends on.
 
-Measured values on this device — zone temperature and system pressure — come from the log of `rensonheatpumplogic`, not from the gateway. See [A note on the measured values](#a-note-on-the-measured-values).
+Measured values on this device — system water temperature and system pressure — come from the log of `rensonheatpumplogic`, not from the gateway. The tank and recirculation sensors (T1, T2, T4) exist as entities but are disabled unless your installation has domestic hot water or recirculation switched on. See [A note on the measured values](#a-note-on-the-measured-values).
 
 ### The apps
 
@@ -75,7 +81,9 @@ Each app on the Brain is its own device, named exactly as OpenMotics names it, w
 
 ### The heat pump
 
-Flow and return temperature, operating state, domestic hot water temperature, mains voltage and the outside temperature the control logic is working with.
+Flow and return temperature, compressor frequency, operating state, domestic hot water temperature, mains voltage and the outside temperature the control logic is working with.
+
+**Heat pump reachable** follows the heat pump itself, not the app that reads it. If the heat pump loses power or its bus link while the Brain keeps running, this entity turns off within three minutes, all heat pump values go unavailable together, and one warning is logged — with one recovery line, including the outage duration, when it comes back.
 
 ---
 
@@ -87,7 +95,20 @@ The heat pump's readings and the HVAC module's sensor inputs are **not offered b
 - **They go unavailable when the app updates.** The meaning of each position is tied to a specific app version — the layout demonstrably changed between two versions in ten weeks. On an unfamiliar version these entities report nothing rather than a wrong number.
 - **Some of them are still being confirmed.** Every entity carries a `function_confidence` attribute. Where it says `assumed`, the mapping is a well-supported inference that has not been verified against the installation yet.
 
-Every position of every log array is also published under a neutral name (`HP_UNIT/hp1 waarde 17`) as a diagnostic sensor, so the remaining meanings can be established by correlating history.
+Every position of every log array is also published under a neutral name — `HP_UNIT/hp1 waarde 17`, as `sensor.ssr_hp_unit_hp1_17` — as a diagnostic sensor, so the remaining meanings can be established by correlating history.
+
+---
+
+## Long-term statistics
+
+Home Assistant keeps long-term statistics forever, even after the regular history is purged. This integration deliberately keeps them for only a few quantities — the ones that tell you, a year from now, whether the system still performs as it does today:
+
+- outside temperature
+- heat pump flow and return temperature
+- compressor frequency
+- system pressure
+
+Settings, voltages and diagnostic values get none. There is **no COP and no electrical consumption**: the heat pump only reports voltage and current, from which no reliable consumption follows. A dedicated energy meter does that better.
 
 ---
 
@@ -191,7 +212,7 @@ There is deliberately **no service to write an arbitrary Modbus register**. As a
 - **No energy metering.** The P1 port cannot be used alongside the expansion bus, and the expansion bus carries the Modbus link to the heat pump and thermostat. This is a property of the hardware, not an omission. A separate P1 Concentrator module would be needed.
 - **The bypass position is a state, not a percentage.** All eight outputs report a constant dimmer value, so there is no percentage to read. What the log does report is `Open` or `Closed`.
 - **A sensor drifting out of true cannot be detected.** An NTC is a passive resistor with no error signal; only a disconnected or short-circuited sensor is recognisable. A perfectly ordinary reading, 0 °C included, is never discarded.
-- **Removing and re-adding the integration breaks history.** Identifiers are rooted on the config entry, because the gateway offers no stable hardware id. Every alternative fails at a moment you cannot see coming; this one fails only when you do it yourself.
+- **Removing and re-adding the integration breaks history**, long-term statistics included. Identifiers are rooted on the config entry, because the gateway offers no stable hardware id. Every alternative fails at a moment you cannot see coming; this one fails only when you do it yourself.
 
 ---
 
