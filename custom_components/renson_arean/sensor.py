@@ -582,7 +582,7 @@ async def async_setup_entry(
     if devices.heatpump is not None:
         for array_key in HEATPUMP_ARRAYS:
             for position in SSR_ARRAYS[array_key].positions:
-                if not position.entity:
+                if not position.entity or position.platform != "sensor":
                     continue
                 entities.append(
                     _ssr_sensor(
@@ -669,25 +669,31 @@ async def async_setup_entry(
 
     if APP_THERMOSTAT in devices.apps:
         device, origin = devices.apps[APP_THERMOSTAT]
-        for key, name, getter, unit in (
-            ("poll_interval", "Poll-interval", lambda c: c.poll_interval, "s"),
+        for key, name, getter, unit, diagnostic in (
+            ("poll_interval", "Poll-interval", lambda c: c.poll_interval, "s", True),
             (
                 "modbus_address",
                 "Modbus-adres thermostaat",
                 lambda c: next(iter(c.bindings.values()), None),
                 None,
+                True,
             ),
+            # Not diagnostic: it changes the room temperature the controller
+            # works with, so the user wants to see it (§5.5). Read-only, like
+            # the rest of the app configuration.
             (
                 "temperature_offset",
                 "Temperatuuroffset",
                 lambda c: next(iter(c.offsets.values()), None),
                 "°C",
+                False,
             ),
             (
                 "manual_override_expiry",
                 "Manual override expiry",
                 lambda c: c.manual_override_expiry,
                 None,
+                True,
             ),
         ):
             entities.append(
@@ -705,8 +711,8 @@ async def async_setup_entry(
                     ),
                     endpoint="get_config",
                     unit=unit,
-                    entity_category=DIAGNOSTIC,
-                    enabled_default=False,
+                    entity_category=DIAGNOSTIC if diagnostic else None,
+                    enabled_default=not diagnostic,
                 )
             )
 

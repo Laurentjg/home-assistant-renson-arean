@@ -383,7 +383,9 @@ HVAC_INPUTS: dict[int, HvacChannel] = {
 
 HVAC_MODULE_MODEL = "HVAC module (30076)"
 BRAIN_MODULE_MODEL = "Brain module (33108)"
-HEATPUMP_MODEL = "Arean 5 kW"
+# No capacity in the model: the Arean R290 comes in several ratings, and
+# nothing the gateway reports says which one is installed.
+HEATPUMP_MODEL = "Arean R290"
 
 # --- SSR log arrays (D-14, V-16) --------------------------------------------
 #
@@ -424,9 +426,12 @@ class SsrPosition:
     # False: the meaning only names the raw position (§4.3, I-20); whether it
     # becomes an entity of its own is the user's call (B-03).
     entity: bool = True
+    # "binary_sensor" for the true/false positions; they get no unit.
+    platform: str = "sensor"
 
 
 STATE_CLASS_MEASUREMENT = "measurement"
+PLATFORM_BINARY_SENSOR = "binary_sensor"
 
 
 @dataclass(frozen=True)
@@ -551,15 +556,18 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 key="waterpump_active",
                 name="Pomp monoblok actief",
                 confidence=CONFIDENCE_ASSUMED,
-                entity=False,
+                platform=PLATFORM_BINARY_SENSOR,
             ),
             SsrPosition(
                 index=7,
                 key="flow",
                 name="Debiet",
                 confidence=CONFIDENCE_ASSUMED,
-                entity=False,
+                device_class="volume_flow_rate",
+                unit="m³/h",
             ),
+            # The exact mirror of index 6 over every measured cycle, so it adds
+            # no information as an entity of its own (B-03, 2026-09-14).
             SsrPosition(
                 index=8,
                 key="standby",
@@ -567,12 +575,14 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 confidence=CONFIDENCE_ASSUMED,
                 entity=False,
             ),
+            # Rises about two minutes before the frequency leaves 0: the request,
+            # not the running compressor (index 12).
             SsrPosition(
                 index=9,
                 key="compressor_requested",
                 name="Compressor aangevraagd",
                 confidence=CONFIDENCE_ASSUMED,
-                entity=False,
+                platform=PLATFORM_BINARY_SENSOR,
             ),
             # 0 at rest, 30–72 while running, pinned at 30 = the lower
             # modulation limit for minutes on end (2026-09-09).
@@ -590,7 +600,8 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 key="flow_setpoint",
                 name="Aanvoersetpoint",
                 confidence=CONFIDENCE_ASSUMED,
-                entity=False,
+                device_class="temperature",
+                unit="°C",
             ),
             SsrPosition(
                 index=18,
@@ -627,8 +638,8 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 unit="V",
                 diagnostic=True,
             ),
-            # Current drawn, not power: 6.9 kW electrical out of a 5 kW unit is
-            # impossible. No power is derived from V × A (D-16).
+            # Current drawn, not power: 6.9 kW electrical out of the 5 kW unit
+            # this was measured on is impossible. No power is derived from V × A (D-16).
             SsrPosition(
                 index=24,
                 key="current",

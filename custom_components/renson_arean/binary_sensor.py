@@ -13,12 +13,16 @@ from homeassistant.const import EntityCategory
 from .const import (
     APP_HEATPUMP,
     APP_LOGIC,
+    CONFIDENCE_ASSUMED,
     HEATPUMP_ARRAYS,
     HVAC_MODULE_MODEL,
     HVAC_OUTPUTS,
+    PLATFORM_BINARY_SENSOR,
     SOURCE_GATEWAY_CORE,
     SOURCE_HARDWARE_HEATPUMP,
+    SSR_ARRAYS,
     source_app_config,
+    source_app_log,
     source_app_runtime,
 )
 from .entity import RensonChannelEntity, RensonEntity
@@ -29,8 +33,9 @@ if TYPE_CHECKING:
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
     from . import RensonConfigEntry, RensonRuntime
-    from .const import Origin
+    from .const import Origin, SsrPosition
     from .coordinators import RensonCoordinator
+    from .devices import DeviceSet
 
 
 class RensonBinarySensor(RensonEntity, BinarySensorEntity):
@@ -243,6 +248,12 @@ async def async_setup_entry(
                 attributes_fn=_heatpump_attributes,
             )
         )
+        for array_key in HEATPUMP_ARRAYS:
+            for position in SSR_ARRAYS[array_key].positions:
+                if position.entity and position.platform == PLATFORM_BINARY_SENSOR:
+                    entities.append(
+                        _ssr_binary_sensor(runtime, devices, array_key, position)
+                    )
 
     for om_id, (device, origin) in devices.thermostats.items():
         entities.append(
@@ -332,6 +343,47 @@ async def async_setup_entry(
             )
 
     async_add_entities(entities)
+
+
+def _ssr_binary_sensor(
+    runtime: RensonRuntime,
+    devices: DeviceSet,
+    array_key: str,
+    position: SsrPosition,
+) -> RensonBinarySensor:
+    """A true/false SSR position of the heat pump, as `sensor.py` does the rest.
+
+    It disappears together with `hardware:heatpump`, and anything that is not a
+    boolean is no value rather than a guess (§5.0, D-14).
+    """
+    return RensonBinarySensor(
+        runtime.state,
+        devices.heatpump,
+        devices.heatpump_origin,
+        position.key,
+        position.name,
+        source_app_log(APP_LOGIC),
+        lambda data, k=array_key, i=position.index: _ssr_bool(data, k, i),
+        endpoint="get_plugin_logs",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        attributes_fn=lambda _data, p=position, k=array_key: {
+            "function_confidence": p.confidence,
+            "array": k,
+            "position": p.index + 1,
+            "verification": (
+                "te controleren, zie non-public/design/open-issues.md"
+                if p.confidence == CONFIDENCE_ASSUMED
+                else None
+            ),
+        },
+    )
+
+
+def _ssr_bool(data, array_key: str, index: int) -> bool | None:
+    if not data.heatpump_reachable:
+        return None
+    value = data.ssr.value(array_key, index)
+    return value if isinstance(value, bool) else None
 
 
 def _layer_l2(_data) -> dict[str, Any]:

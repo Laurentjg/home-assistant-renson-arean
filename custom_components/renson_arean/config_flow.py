@@ -23,6 +23,11 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+)
 
 from .api.client import RensonAuthError, RensonClient, RensonError
 from .const import (
@@ -171,6 +176,8 @@ class RensonOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Show the options."""
         if user_input is not None:
+            # The number selector hands back a float; the address is an int.
+            user_input[CONF_THERMOSTAT_SLAVE] = int(user_input[CONF_THERMOSTAT_SLAVE])
             return self.async_create_entry(data=user_input)
 
         options = self.config_entry.options
@@ -185,7 +192,13 @@ class RensonOptionsFlow(OptionsFlow):
                     default=options.get(
                         CONF_THERMOSTAT_SLAVE, DEFAULT_THERMOSTAT_SLAVE
                     ),
-                ): vol.All(int, vol.Range(min=1, max=247)),
+                    # A selector, not `vol.Range`: with both bounds the frontend
+                    # draws a slider, and an address is typed, not slid (§5.1).
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=1, max=247, step=1, mode=NumberSelectorMode.BOX
+                    )
+                ),
                 vol.Optional(
                     CONF_THERMOSTAT_CONNECTED_TO,
                     default=options.get(
