@@ -4,7 +4,7 @@ What each version means for you as a user.
 
 ---
 
-## 2026.9.0 — in preparation
+## 2026.9.0 — 14 September 2026
 
 This version reorganises the integration so that it follows how a Renson installation is actually built. Functionally you can do the same things, but you will find them in different places and **every entity id changes**. Upgrading means removing the integration and adding it again. Read this before you start.
 
