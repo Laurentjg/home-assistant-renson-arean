@@ -23,14 +23,14 @@ NOTES = ROOT / "docs" / "release-notes.md"
 
 # Year.month.sequence, optionally a beta: 2026.9.0, 2026.9.1, 2026.10.0b1.
 VERSION = re.compile(r"^\d{4}\.(?:[1-9]|1[0-2])\.\d+(?:b\d+)?$")
-IN_PREPARATION = "in voorbereiding"
+IN_PREPARATION = "in preparation"
 
 
 def main(tag: str | None, prerelease: bool = False) -> list[str]:
     errors: list[str] = []
     version = json.loads(MANIFEST.read_text())["version"]
     if not VERSION.match(version):
-        errors.append(f"manifest.json: '{version}' is geen jaar.maand.volgnummer")
+        errors.append(f"manifest.json: '{version}' is not year.month.sequence")
 
     # A beta shares the release notes of the version it leads up to.
     base = re.sub(r"b\d+$", "", version)
@@ -43,24 +43,24 @@ def main(tag: str | None, prerelease: bool = False) -> list[str]:
         None,
     )
     if heading is None:
-        errors.append(f"docs/release-notes.md: geen sectie '## {base}'")
+        errors.append(f"docs/release-notes.md: no section '## {base}'")
 
     if tag is not None:
         tag_version = tag.removeprefix("v")
         if tag_version != version:
             errors.append(
-                f"tag '{tag}' hoort bij versie '{tag_version}', "
-                f"manifest.json zegt '{version}'"
+                f"tag '{tag}' means version '{tag_version}', "
+                f"manifest.json says '{version}'"
             )
         is_beta = bool(re.search(r"b\d+$", tag_version))
         if is_beta and not prerelease:
             errors.append(
-                f"'{tag}' is een beta maar niet als pre-release gepubliceerd: "
-                "HACS zou hem aan iedereen aanbieden"
+                f"'{tag}' is a beta but not published as a pre-release: "
+                "HACS would offer it to everyone"
             )
         if heading and IN_PREPARATION in heading and not is_beta:
             errors.append(
-                f"docs/release-notes.md: '{heading}' staat nog als {IN_PREPARATION}"
+                f"docs/release-notes.md: '{heading}' is still marked {IN_PREPARATION}"
             )
     return errors
 
@@ -73,5 +73,5 @@ if __name__ == "__main__":
     for problem in problems:
         print(f"::error::{problem}")
     if not problems:
-        print("Versie consistent.")
+        print("Version consistent.")
     sys.exit(1 if problems else 0)

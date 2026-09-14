@@ -1,210 +1,121 @@
 # Release notes
 
-Wat elke versie voor jou als gebruiker betekent.
+What each version means for you as a user.
 
 ---
 
-## 2026.9.0 — in voorbereiding
+## 2026.9.0 — in preparation
 
-Deze versie herindeelt de integratie zodat ze de werkelijke Renson-opbouw volgt. Je kunt functioneel
-hetzelfde, maar je ziet het anders terug en **alle entiteit-id's veranderen**. Bijwerken vraagt om de
-integratie te verwijderen en opnieuw toe te voegen. Lees dit voordat je begint.
+This version reorganises the integration so that it follows how a Renson installation is actually built. Functionally you can do the same things, but you will find them in different places and **every entity id changes**. Upgrading means removing the integration and adding it again. Read this before you start.
 
-### Wat er beter wordt
+### What gets better
 
-- **Je installatie is nu herkenbaar.** In plaats van één apparaat "Renson Arean" zie je de Brain
-  module, de HVAC module, je thermostaat, de drie apps die op de Brain draaien, en de warmtepomp zelf
-  — met per app het versienummer dat ook in OpenMotics staat.
-- **De drie "onbekende uitgangen" zijn opgelost.** Het bleken `Zone 1-afsluiter` (R1),
-  `Bypass-klep` (OUT3) en één kanaal waar `hvac_config` niets aan toewijst (OUT1). De namen komen
-  niet meer uit de code maar uit de installatie zelf: de app levert de bedradingskaart die je
-  installateur bij de inbedrijfstelling heeft ingevuld.
-- **Nieuwe metingen.** Systeemwatertemperatuur, systeemdruk, aanvoer- en retourtemperatuur van de
-  warmtepomp, compressorfrequentie, buitentemperatuur en netspanning. Lees wel de kanttekening
-  verderop — deze waarden komen langs een omweg binnen.
-- **Je ziet het als je warmtepomp wegvalt.** `Warmtepomp bereikbaar` volgt nu de warmtepomp zelf: valt
-  die uit terwijl de Brain gewoon doordraait, dan slaat de entiteit binnen drie minuten om, verschijnt
-  er één melding in het logboek en bij herstel één melding met de duur van de storing. In eerdere
-  opzetten bleef zo'n uitval volledig onzichtbaar.
-- **Je thermostaatkaart laat zien of er warmte gevraagd wordt.** De kaart toont nu "verwarmen" of
-  "inactief", in plaats van dat je dat uit twee losse diagnostische waarden moest afleiden.
-- **Wijzigingen zijn direct zichtbaar.** Verander je de temperatuur, dan reageert de kaart meteen in
-  plaats van pas bij de volgende pollronde. En hij springt niet meer terug naar de oude waarde: een
-  pollronde die net vóór de cyclus van de app valt kan je wijziging niet meer ongedaan maken.
-- **Rustiger logboek.** Bij het opstarten meldt de integratie van elke gegevensbron of die werkt,
-  daarna alleen nog wanneer er iets verandert. Een storing wordt één keer gemeld, niet elke
-  pollronde opnieuw.
-- **Elk pollinterval past nu bij zijn bron.** De thermostaat elke 10 seconden, de kleppen en pompen
-  elke 30, de app-instellingen elke 5 minuten, de moduleslijst elk kwartier.
+- **Your installation is recognisable.** Instead of one device "Renson Arean" you see the Brain module, the HVAC module, your thermostat, the three apps running on the Brain, and the heat pump itself — each app with the version number OpenMotics shows as well.
+- **The three "unknown outputs" are resolved.** They turned out to be `Zone 1-afsluiter` (zone 1 shut-off valve, R1), `Bypass-klep` (bypass valve, OUT3) and one channel `hvac_config` assigns nothing to (OUT1). The names no longer come from the code but from the installation itself: the app supplies the wiring map your installer filled in at commissioning.
+- **New measurements.** System water temperature, system pressure, heat pump flow and return temperature, flow rate, flow temperature setpoint, compressor frequency, outside temperature and mains voltage, plus whether the compressor is requested and whether the pump inside the monobloc runs. Do read the note further down — these values arrive by a detour.
+- **You can see when your heat pump drops out.** `Warmtepomp bereikbaar` (heat pump reachable) now follows the heat pump itself: if it fails while the Brain keeps running, the entity turns off within three minutes, one warning appears in the log, and one message with the outage duration when it recovers. Before, such an outage was completely invisible.
+- **Your thermostat card shows whether heat is being requested.** The card now says "heating" or "idle", instead of you having to work that out from two separate diagnostic values.
+- **Changes show immediately.** When you change the temperature, the card responds at once instead of at the next polling round. And it no longer jumps back to the old value: a poll that happens just before the app's own cycle can no longer undo your change.
+- **A quieter log.** At start-up the integration reports once per data source whether it works, and after that only when something changes. A failure is reported once, not again at every poll.
+- **Every polling interval fits its source.** The thermostat every 10 seconds, the valves and pumps every 30, the app settings every 5 minutes, the module list every 15 minutes.
+- **The thermostat's Modbus address is a number field** in the options, no longer a slider.
 
-### Wat je moet aanpassen
+### What you need to change
 
-**Je moet de integratie verwijderen en opnieuw toevoegen.** Er is geen automatische overgang van
-2026.6.0 naar 2026.9.0. Alle entiteit-id's zijn nieuw, en de historie van de oude entiteiten blijft
-in de database staan maar wordt niet meer gevuld.
+**You must remove the integration and add it again.** There is no automatic transition from 2026.6.0 to 2026.9.0. All entity ids are new; the history of the old entities stays in the database but is no longer filled.
 
-*Waarom niet gemigreerd:* een eerdere opzet zette de oude entiteiten om naar de nieuwe indeling. Dat
-werkte, maar Home Assistant hernoemt een bestaand entiteit-id niet als de onderliggende identiteit
-verhuist. Het resultaat was één installatie met vier naamconventies door elkaar — waaronder id's die
-het verkeerde apparaat noemden, zoals een uitgang van de HVAC module die `gateway_uitgang_7` heette.
-Eén schone indeling is op termijn goedkoper dan een correcte migratie naar een rommelige.
+*Why no migration:* an earlier design converted the old entities to the new layout. That worked, but Home Assistant does not rename an existing entity id when the identity underneath it moves. The result was one installation with four naming conventions mixed together — including ids naming the wrong device, such as an output of the HVAC module called `gateway_uitgang_7`. One clean layout is cheaper in the long run than a correct migration to a messy one.
 
-**Zo zijn de nieuwe namen opgebouwd.** Het entiteit-id noemt het *kanaal of het datapunt* en
-verandert daarna nooit meer; de weergavenaam noemt de *functie* en mag per release beter worden. Een
-eigen naam die je zelf instelt wint altijd.
+**How the new names are built.** The entity id names the *channel or datapoint* and never changes after that; the display name names the *function* and may improve with each release. A name you set yourself always wins.
 
-| Wat | Entiteit-id | Weergavenaam |
+| What | Entity id | Display name |
 |---|---|---|
-| Uitgang R3 van de HVAC module | `binary_sensor.hvac_module_r3` | Driewegklep |
-| Uitgang OUT3 | `binary_sensor.hvac_module_out3` | Bypass-klep |
-| Je thermostaat | `climate.thermostat_0` | Thermostaat 0 |
-| Stille modus | `binary_sensor.app_rensonheatpumplogic_silent_mode` | Stille modus actief |
-| Aanvoertemperatuur warmtepomp | `sensor.heatpump_flow_temperature` | Aanvoertemperatuur |
+| Output R3 of the HVAC module | `binary_sensor.hvac_module_r3` | Driewegklep |
+| Output OUT3 | `binary_sensor.hvac_module_out3` | Bypass-klep |
+| Your thermostat | `climate.thermostat_0` | Thermostaat 0 |
+| Silent mode | `binary_sensor.app_rensonheatpumplogic_silent_mode` | Stille modus actief |
+| Heat pump flow temperature | `sensor.heatpump_flow_temperature` | Aanvoertemperatuur |
 
-Blijkt later dat R3 iets anders schakelt dan een driewegklep, dan verandert alleen het etiket. Je
-automatiseringen blijven werken, want die verwijzen naar het kanaal.
+If R3 later turns out to switch something other than a three-way valve, only the label changes. Your automations keep working, because they refer to the channel.
 
-**De schakelaar voor stille modus wordt een statusweergave.** Je kunt stille modus nog wél aflezen,
-maar niet meer omzetten vanuit Home Assistant. Zet je hem nu in een automatisering, dan stopt die met
-werken.
+**The silent mode switch becomes a status display.** You can still read silent mode, but no longer switch it from Home Assistant. If an automation switches it today, that automation will stop working.
 
-*Waarom:* die instelling zit in de app `rensonheatpumplogic`, waar een wijziging alleen kan door het
-hele configuratieblok terug te schrijven. Dat kan botsen met de app zelf, en een verkeerde
-regelparameter kost comfort of levensduur van de warmtepomp. Hij wordt pas weer schakelbaar als er
-een schrijfpad per veld is aangetoond. Instellen kan intussen gewoon in OpenMotics of de Renson
-One-app. Hetzelfde geldt voor de backup heater, die in 2026.6.0 al alleen af te lezen was.
+*Why:* the setting lives in the `rensonheatpumplogic` app, where a change is only possible by writing back the whole configuration block. That can collide with the app itself, and a wrong control parameter costs comfort or heat pump life. It becomes switchable again once a per-field write path has been demonstrated. Meanwhile you can set it in OpenMotics or the Renson One app. The same goes for the backup heater, which was already read-only in 2026.6.0.
 
-**De bypass-sensor vervalt zonder vervanger.** Die las een percentage af van uitgang 6. Dat was het
-verkeerde kanaal — de bypass zit op uitgang 7 — én de waarde bleek een constante: alle acht uitgangen
-melden onveranderlijk dezelfde dimmerstand. Wat je ervoor terugkrijgt is `Bypass-stand`, die `Open`
-of `Closed` meldt.
+**The bypass sensor is dropped without a replacement percentage.** It read a percentage from output 6. That was the wrong channel — the bypass is on output 7 — and the value turned out to be a constant: all eight outputs report the same unchanging dimmer value. What you get instead is `Bypass-stand` (bypass position), reporting `Open` or `Closed`.
 
-**`Modbus-verbinding gezond` vervalt.** Die entiteit meldde in de praktijk permanent een
-storing, ook terwijl de warmtepomp gewoon draaide: ze las een foutmelding uit een app die de
-Modbus-koppeling helemaal niet verzorgt, en die melding verandert nooit. Gebruik in automatiseringen
-voortaan `Warmtepomp bereikbaar`.
+**`Modbus-verbinding gezond` (Modbus connection healthy) is dropped.** In practice it reported a fault permanently, even while the heat pump was running: it read an error message from an app that does not handle the Modbus link at all, and that message never changes. Use `Warmtepomp bereikbaar` in automations instead.
 
-**Hysterese en stuurvermogen staan nu bij de Brain module.** Het zijn waarden van de regelaar in de
-Brain, niet van je wandthermostaat — die heeft er geen register voor. Of er warmte gevraagd wordt, zie
-je nog steeds op je thermostaatkaart. `Bedrijfstoestand thermostaat` heet nu `Thermostaat
-ingeschakeld`: het is een aan/uit-vlag, geen werkende toestand, en de oude naam suggereerde het
-tegendeel.
+**Hysteresis and steering power are now under `Brain-App rensonheatpumplogic`.** That app owns the control: it sets these values in the controller on the Brain, and your wall thermostat has no register for them. Without that app they appear under the Brain module. Whether heat is being requested is still shown on your thermostat card. `Bedrijfstoestand thermostaat` is now called `Thermostaat ingeschakeld` (thermostat switched on): it is an on/off flag, not an operating state, and the old name suggested otherwise.
 
-**`Brondata beschikbaar` heet nu `Brondata-probleem`.** Het was al een probleemmelding — `aan` betekende
-dat er iets mis was — maar de naam beloofde het omgekeerde.
+**`Brondata beschikbaar` is now called `Brondata`** (source data). It already was a problem indicator — `on` meant something was wrong — but the name promised the opposite. Home Assistant now shows it as `OK` or `Probleem`.
 
-**`Zonetemperatuur` heet nu `Systeemwatertemperatuur`.** Metingen aan een draaiende installatie
-lieten zien dat deze voeler naar bijna 40 °C loopt terwijl de kamer op 20 °C staat: het is de
-watertemperatuur in het verwarmingssysteem, geen ruimtetemperatuur.
+**`Zonetemperatuur` is now called `Systeemwatertemperatuur`** (system water temperature). Measurements on a running installation showed this sensor rising to almost 40 °C while the room was at 20 °C: it is the water temperature in the heating system, not a room temperature.
 
-**De voelers van de boilertank en de recirculatie bestaan als entiteit, maar staan standaard uit** als
-je installatie geen tapwater of recirculatie gebruikt. Heb je die subsystemen wél ingeschakeld, dan
-staan ze vanzelf aan. Zet je ze handmatig aan zonder dat het subsysteem draait, dan blijven ze leeg —
-het `Kanaaloverzicht` vertelt waarom.
+**The sensors of the hot water tank and the recirculation exist as entities, but are disabled by default** if your installation does not use domestic hot water or recirculation. If those subsystems are switched on, the sensors are enabled automatically. Enable them manually without the subsystem running and they stay empty — the `Kanaaloverzicht` (channel overview) tells you why.
 
-**Uitgang 6 heet nu anders.** Die stond als "Bypass-klep" in je overzicht; het is in werkelijkheid de
-dummy-zoneklep van het thermostaatsysteem. Het etiket was fout, niet het kanaal.
+**Output 6 has a different name.** It appeared as "Bypass-klep" in your overview; it is in fact the dummy zone valve of the thermostat system. The label was wrong, not the channel.
 
-**Je thermostaat verhuist naar een eigen apparaat.** Dashboardkaarten die naar het *apparaat*
-verwijzen in plaats van naar de entiteit, moet je opnieuw koppelen.
+**`Temperatuuroffset` (temperature offset) is a regular entity** on `Brain-App RensonThermostat`, enabled by default, instead of a hidden diagnostic value.
 
-**Er komen apparaten bij** die je nog niet kende: de drie apps op de Brain en de warmtepomp zelf. Dat
-is geen ruis maar de plek waar hun versienummers en storingsmeldingen thuishoren.
+**Your thermostat moves to a device of its own.** Dashboard cards that refer to the *device* rather than to the entity need to be linked again.
 
-### Kanttekening bij de nieuwe metingen
+**New devices appear** that you did not have before: the three apps on the Brain and the heat pump itself, shown with model `Arean R290`. That is not clutter but the place where their version numbers and fault indicators belong.
 
-De temperaturen en drukken van de HVAC module en alle warmtepompwaarden worden **niet door de gateway
-aangeboden**. Ze bestaan alleen in het logboek dat de app `rensonheatpumplogic` bijhoudt, als
-naamloze rijtjes getallen. De integratie leest ze daar, en is eerlijk over wat dat kost:
+### A note on the new measurements
 
-- **Ze kunnen leeg blijven na een herstart.** De app schrijft een waarde alleen weg als die
-  *verandert*. Blijft een temperatuur een uur gelijk, dan staat er een uur lang niets over in het
-  log. Dat is geen storing en sneller pollen helpt er niet tegen.
-- **Ze verdwijnen als de app een update krijgt.** De betekenis van elke positie hangt aan een
-  specifieke app-versie, en die indeling is aantoonbaar veranderd tussen twee versies in tien weken.
-  Bij een onbekende versie melden deze entiteiten niets in plaats van een verkeerd getal.
-- **Van sommige staat de betekenis nog niet vast.** Elke entiteit draagt een attribuut
-  `function_confidence`. Staat daar `assumed`, dan berust de toewijzing op een goed onderbouwde
-  afleiding die nog niet aan de installatie is getoetst.
+The temperatures and pressures of the HVAC module and all heat pump values are **not offered by the gateway**. They exist only in the log the `rensonheatpumplogic` app keeps, as unnamed lists of numbers. The integration reads them there, and is honest about what that costs:
 
-Daarnaast wordt élke positie van élk logrijtje ook onder een neutrale naam gepubliceerd
-(`HP_UNIT/hp1 waarde 17`), als diagnostische sensor. Daarmee is straks uit te zoeken wat de
-overgebleven posities betekenen.
+- **They can be empty after a restart.** The app only writes a value when it *changes*. If a temperature holds steady for an hour, nothing about it is logged for an hour. That is not a fault, and polling faster does not help.
+- **They go unavailable when the app is updated.** The meaning of each position is tied to a specific app version, and that layout demonstrably changed between two versions in ten weeks. On an unknown version these entities report nothing rather than a wrong number.
+- **The meaning of some of them is not yet settled.** Every entity carries a `function_confidence` attribute. Where it says `assumed`, the mapping rests on a well-supported inference that has not yet been verified against the installation.
 
-### Langetermijnstatistieken
+In addition, every position of every log array is published under a neutral name (`HP_UNIT/hp1 waarde 17`) as a diagnostic sensor, disabled by default. That makes it possible to work out what the remaining positions mean.
 
-Home Assistant bewaart van sommige waarden een statistiek voor altijd, ook na het opschonen van de
-gewone historie. Deze versie kiest daar bewust weinig waarden voor — alleen de grootheden waarmee je
-over een jaar nog kunt zien of je systeem net zo presteert als nu:
+### Long-term statistics
 
-- buitentemperatuur
-- aanvoer- en retourtemperatuur van de warmtepomp
-- compressorfrequentie
-- systeemdruk
+Home Assistant keeps statistics for some values forever, even after the regular history is purged. This version deliberately chooses few values for that — only the quantities that tell you, a year from now, whether your system still performs as it does today:
 
-De rest — instellingen, spanningen, diagnostische waarden — krijgt geen langetermijnstatistiek. Dat
-houdt je database klein en je grafieken leesbaar.
+- outside temperature
+- heat pump flow and return temperature
+- compressor frequency
+- system pressure
 
-Er komt **geen rendement (COP) en geen elektrisch verbruik** uit deze integratie. De warmtepomp meldt
-alleen spanning en stroom, en daaruit is geen betrouwbaar verbruik af te leiden. Een aparte
-energiemeter doet dat nauwkeuriger.
+Everything else — settings, voltages, diagnostic values — gets no long-term statistics. That keeps your database small and your graphs readable.
 
-**Meldingen na de upgrade.** Home Assistant kan na het bijwerken melden dat het voor een aantal oude
-entiteiten — bijvoorbeeld *Looptijd stille modus*, *Max. duur stille modus* of *Stuurvermogen* — geen
-statistieken meer kan bijhouden, en vragen of je de bestaande statistieken wilt verwijderen. Dat mag:
-deze waarden krijgen bewust geen langetermijnstatistiek meer.
+The integration computes **no efficiency (COP) and no electrical consumption** itself. The heat pump only reports voltage and current, from which no reliable consumption follows; a dedicated energy meter does that more accurately. With such a meter you can build a COP sensor yourself — the README explains how, and how to read it.
 
-### Opslag van je gatewaywachtwoord
+**Notifications after the upgrade.** After updating, Home Assistant may report that it can no longer keep statistics for some old entities — for example *Looptijd stille modus*, *Max. duur stille modus* or *Stuurvermogen* — and ask whether you want to delete the existing statistics. That is fine: these values deliberately no longer get long-term statistics.
 
-Belangrijk om te weten, en het geldt voor elke Home Assistant-integratie met een wachtwoord:
+### Storing your gateway password
 
-**Je gatewaywachtwoord wordt in platte tekst opgeslagen, niet gehasht of versleuteld.** Dat kan ook
-niet anders: de OpenMotics-gateway geeft alleen een tijdelijk token van één uur in ruil voor je
-echte wachtwoord, dus de integratie moet dat wachtwoord kunnen blijven overleggen. Home Assistant
-bewaart integratie-instellingen als gewone JSON in `.storage/core.config_entries`; er is geen
-versleutelde opslag.
+Worth knowing, and true of every Home Assistant integration with a password:
 
-Concreet: **je wachtwoord staat leesbaar in je Home Assistant-backups.**
+**Your gateway password is stored in plain text, not hashed or encrypted.** It cannot be otherwise: the OpenMotics gateway only hands out a temporary one-hour token in exchange for your real password, so the integration must be able to present that password again. Home Assistant stores integration settings as plain JSON in `.storage/core.config_entries`; there is no encrypted store.
 
-Wat de integratie wel doet: het tijdelijke token wordt nooit weggeschreven, wachtwoorden komen nooit
-in het logboek (ook niet op debug-niveau — het wachtwoord zit in de URL, dus naïef loggen zou het
-integraal lekken), en de diagnosegegevens die je kunt downloaden zijn geredigeerd.
+In practice: **your password is readable in your Home Assistant backups.**
 
-Wat jij kunt doen:
+What the integration does do: the temporary token is never written to disk, passwords never appear in the log (not even at debug level — the password travels in the URL, so naive logging would leak it outright), and the downloadable diagnostics are redacted.
 
-- Maak op de gateway een **aparte gebruiker voor Home Assistant** in plaats van je hoofd- of
-  installateursaccount.
-- Bewaar Home Assistant-backups versleuteld, en liefst niet op een gedeelde netwerkschijf.
+What you can do:
 
-### Nog één ding om te weten
+- Create a **separate gateway user for Home Assistant** instead of using your main or installer account.
+- Keep Home Assistant backups encrypted, and preferably not on a shared network drive.
 
-**Verwijder je de integratie en voeg je hem opnieuw toe, dan begint je historie opnieuw** — de
-langetermijnstatistieken inbegrepen. Dat geldt voor het bijwerken naar deze versie, en ook daarna. De identiteit van alle apparaten en entiteiten
-hangt aan de configuratie-invoer, omdat de gateway geen serienummer of ander vast hardware-kenmerk
-levert. Elk alternatief faalt op een moment dat je niet aan ziet komen — bij een DHCP-wijziging, of
-als een module vervangen wordt. Deze faalt alleen wanneer je het zelf doet.
+### One more thing to know
 
-Wat wél blijft: zolang je de integratie laat staan, veranderen je entiteit-id's niet meer. Ze hangen
-aan het kanaal of het datapunt, niet aan het apparaat waarop ze worden weergegeven — dus als een
-meetwaarde later bij een ander apparaat blijkt te horen, verhuist de entiteit mee zonder dat je
-automatiseringen breken.
+**If you remove the integration and add it again, your history starts over** — long-term statistics included. That applies to upgrading to this version, and afterwards as well. The identity of all devices and entities is tied to the config entry, because the gateway provides no serial number or other stable hardware id. Every alternative fails at a moment you do not see coming — a DHCP change, or a module being replaced. This one only fails when you do it yourself.
 
-### Wat níet verandert
+What does last: as long as you leave the integration in place, your entity ids no longer change. They are tied to the channel or datapoint, not to the device they are shown on — so if a measurement later turns out to belong to a different device, the entity moves along without breaking your automations.
 
-- **Je hebt geen Renson One-account nodig.** De integratie praat uitsluitend lokaal met de Brain
-  module in je eigen netwerk. Er gaat geen enkel verzoek naar de Renson-cloud — ook niet voor de
-  buitentemperatuur, die uit het lokale logboek komt.
-- **Alles blijft werken zonder internet.** Verwarmingsschema en presettemperaturen die je eerder via
-  Renson One hebt ingesteld, staan lokaal op de Brain en blijven gewoon werken. Alleen het
-  *wijzigen* van die twee vereist de Renson One-app — dat was in 2026.6.0 al zo.
-- **Je presets houden hun waarden.** In het menu staat nu overal Nederlands — Klokprogramma, Afwezig,
-  Handmatig — maar de onderliggende waarden `schedule`, `away` en `manual` zijn ongewijzigd. Bestaande
-  automatiseringen blijven werken.
+### What does not change
+
+- **You do not need a Renson One account.** The integration talks exclusively and locally to the Brain module on your own network. Not a single request goes to the Renson cloud — not even for the outside temperature, which comes from the local log.
+- **Everything keeps working without internet.** The heating schedule and preset temperatures you set earlier through Renson One are stored locally on the Brain and keep working. Only *changing* those two requires the Renson One app — that was already the case in 2026.6.0.
+- **Your presets keep their values.** The menu shows them in your own language, but the underlying values `schedule`, `away` and `manual` are unchanged. Existing automations keep working.
 
 ---
 
-## 2026.6.0 — 25 juni 2026
+## 2026.6.0 — 25 June 2026
 
-Eerste werkende versie. Eén apparaat met thermostaatbediening (temperatuur, preset, verwarmen/koelen),
-stille modus, en de status van de kleppen en pompen. Blijft beschikbaar als bevroren referentie in
-`../home-assistant-renson-arean-v1`.
+First working version. One device with thermostat control (temperature, preset, heating/cooling), silent mode, and the status of the valves and pumps.

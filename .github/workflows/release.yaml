@@ -51,4 +51,4 @@ jobs:
           RELEASE_ID: ${{ github.event.release.id }}
         run: |
           gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -F draft=true
-          echo "::error::Release teruggezet naar concept; zie de controle hierboven."
+          echo "::error::Release withdrawn to draft; see the check above."
