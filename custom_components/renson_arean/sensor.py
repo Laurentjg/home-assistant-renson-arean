@@ -101,6 +101,9 @@ class SsrPositionSensor(RensonSensor):
     correlation later (V-16). They interpret nothing: booleans are rendered as
     text, numbers pass through untouched, and the Modbus "not available"
     sentinel has already been turned into no value at all (S-01).
+
+    An instrument, not user information: off by default. The name carries the
+    meaning as far as it is known (§4.3, I-20); the entity_id stays physical.
     """
 
     def __init__(self, coordinator, device, origin, array: SsrArray, index: int):
@@ -110,11 +113,12 @@ class SsrPositionSensor(RensonSensor):
             device,
             origin,
             f"{array.slug}:{index + 1}",
-            f"{array.key} waarde {index + 1}",
+            array.raw_name(index),
             source_app_log(APP_LOGIC),
             lambda data, key=array.key, i=index: _raw(data.ssr.value(key, i)),
             endpoint="get_plugin_logs",
             entity_category=DIAGNOSTIC,
+            enabled_default=False,
             attributes_fn=lambda _data, a=array, i=index: _position_attributes(a, i),
         )
 
@@ -332,7 +336,7 @@ def _input_position(channel_key: str) -> SsrPosition | None:
     positions = [
         position
         for position in SSR_ARRAYS["HP_HVAC/0"].positions
-        if position.key.startswith(channel_key)
+        if position.entity and position.key.startswith(channel_key)
     ]
     for position in positions:
         if not position.diagnostic:
@@ -399,12 +403,15 @@ def _unmapped_input_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
 def _thermostat_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
     """The thermostat device carries what the user reads off the wall unit (§5.4).
 
-    Steering power is the output of the OM controller, which runs on the Brain
-    (D-01): it is shown there, under the thermostat's own origin, so its
-    identity does not depend on where it is displayed (D-15).
+    Steering power is `active_value` of the hysteresis config that
+    `rensonheatpumplogic` syncs into the gateway thermostat: it is shown on that
+    app — on the Brain, which only executes, when the app is absent (P-06) —
+    under the thermostat's own origin, so its identity does not depend on where
+    it is displayed (D-15, I-16).
     """
     sensors: list[RensonSensor] = []
     devices = runtime.devices
+    controller = devices.apps.get(APP_LOGIC, (devices.brain, None))[0]
     for om_id, (device, origin) in devices.thermostats.items():
         for key, name, getter, device_class, unit, category, target, layer in (
             (
@@ -424,7 +431,7 @@ def _thermostat_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
                 None,
                 "%",
                 DIAGNOSTIC,
-                devices.brain,
+                controller,
                 "L2",
             ),
             (
@@ -550,6 +557,8 @@ async def async_setup_entry(
         )
         entities.append(_channel_overview(runtime))
         for position in SSR_ARRAYS["HP_HVAC/0"].positions:
+            if not position.entity:
+                continue
             entities.append(
                 _ssr_sensor(
                     runtime, devices.hvac, devices.hvac_origin, "HP_HVAC/0", position
@@ -573,6 +582,8 @@ async def async_setup_entry(
     if devices.heatpump is not None:
         for array_key in HEATPUMP_ARRAYS:
             for position in SSR_ARRAYS[array_key].positions:
+                if not position.entity:
+                    continue
                 entities.append(
                     _ssr_sensor(
                         runtime,

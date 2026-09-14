@@ -144,10 +144,10 @@ def _app_entities(
             runtime.config,
             device,
             origin,
-            # A PROBLEM sensor is on when there is a problem, so the name says
-            # problem too (I-13).
+            # A PROBLEM sensor already reads OK/Probleem in Home Assistant, so the
+            # name is the subject only: "Brondata: OK" (I-13).
             "source_problem",
-            "Brondata-probleem",
+            "Brondata",
             source_app_config(app),
             lambda data, app=app: not (data and app in data.raw),
             endpoint="get_config",
@@ -279,12 +279,14 @@ async def async_setup_entry(
                 attributes_fn=_layer_l2,
             )
         )
-        # Controller mechanics belong to the Brain, which runs the controller
-        # (D-01, I-16). The origin stays the thermostat's (D-15).
+        # The controller belongs to `rensonheatpumplogic`, which syncs its
+        # hysteresis config into the gateway; the Brain only executes it and is
+        # the fallback without the app (I-16, P-06). The origin stays the
+        # thermostat's (D-15).
         entities.append(
             RensonBinarySensor(
                 runtime.thermostat,
-                devices.brain,
+                devices.apps.get(APP_LOGIC, (devices.brain, None))[0],
                 origin,
                 "hysteresis_active",
                 f"Hysterese actief — thermostaat {om_id}",

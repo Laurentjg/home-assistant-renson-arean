@@ -9,7 +9,7 @@ simply lose cycles (CN-11).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable
 
@@ -69,6 +69,8 @@ class StateCoordinator(RensonCoordinator[StateData]):
         # Remembered across polls: the buffer holds about a minute and a half,
         # shorter than the freshness limit.
         self._heatpump_seen: datetime | None = None
+        # The last accepted array per key, published while nothing doubts it (I-10).
+        self._arrays: dict[str, list] = {}
 
     async def _fetch(self) -> StateData:
         outputs = models.parse_output_status(await self.client.get_output_status())
@@ -84,11 +86,11 @@ class StateCoordinator(RensonCoordinator[StateData]):
             self.health.report(
                 source_app_log(APP_LOGIC), STATUS_ERROR, "; ".join(snapshot.rejected)
             )
-        elif snapshot.arrays:
+        elif snapshot.arrays or self._arrays:
             self.health.report(
                 source_app_log(APP_LOGIC),
                 STATUS_OK,
-                f"{len(snapshot.arrays)} SSR-arrays",
+                f"{len(set(snapshot.arrays) | set(self._arrays))} SSR-arrays",
             )
         else:
             # The SSR lines are only written on change, so an empty buffer is
@@ -100,6 +102,12 @@ class StateCoordinator(RensonCoordinator[StateData]):
             )
 
         heatpump_reachable = self._heatpump_reachable(snapshot)
+        self._arrays = ssr.hold(
+            self._arrays,
+            snapshot,
+            drop=HEATPUMP_ARRAYS if heatpump_reachable is False else (),
+        )
+        snapshot = replace(snapshot, arrays=dict(self._arrays))
 
         app_health = {app: ssr.parse_app_health(lines) for app, lines in logs.items()}
         return StateData(
@@ -127,9 +135,10 @@ class StateCoordinator(RensonCoordinator[StateData]):
             ):
                 self._heatpump_seen = seen
 
-        if snapshot.rejected:
-            # The log cannot be read, so nothing can be said about the device
-            # behind it: "we cannot read it" is not "it is gone" (§5.8).
+        if snapshot.refused.intersection(HEATPUMP_ARRAYS):
+            # The heat pump arrays cannot be read, so nothing can be said about
+            # the device behind them: "we cannot read it" is not "it is gone"
+            # (§5.8). An array the table does not know is no such doubt (I-19).
             return None
 
         reachable = freshness(

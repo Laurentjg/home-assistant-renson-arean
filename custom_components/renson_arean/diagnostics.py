@@ -69,6 +69,8 @@ async def async_get_config_entry_diagnostics(
             "ssr": {
                 "arrays": dict(state.ssr.arrays) if state else {},
                 "rejected": list(state.ssr.rejected) if state else [],
+                # Arrays the table does not know yet — candidates for V-16 (I-19).
+                "unknown": list(state.ssr.unknown) if state else [],
             },
             "config": dict(runtime.config.data.raw) if runtime.config.data else {},
         },

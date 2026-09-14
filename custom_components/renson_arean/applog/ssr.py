@@ -43,6 +43,12 @@ class SsrSnapshot:
     seen: dict[str, datetime] = field(default_factory=dict)
     # Why an array was discarded — one line per reason, for the health tracker.
     rejected: tuple[str, ...] = ()
+    # The known arrays whose layout could not be trusted this poll: a different
+    # length, or every array when the app version is unknown.
+    refused: frozenset[str] = frozenset()
+    # Arrays the table does not know. No doubt about any layout, so no fault —
+    # the app logs `HP_HYDRAULIC_ZONE/0` every ten minutes (I-19).
+    unknown: tuple[str, ...] = ()
 
     def value(self, array_key: str, index: int) -> Any:
         """Return one position, or None when the array is absent or too short."""
@@ -79,11 +85,14 @@ def parse_ssr(lines: list[LogLine], app_version: str | None) -> SsrSnapshot:
                 f"app-versie {app_version!r} is onbekend; de positieafbeelding "
                 f"is vastgesteld op {SSR_APP_VERSION}",
             ),
+            refused=frozenset(SSR_ARRAYS),
         )
 
     arrays: dict[str, list[Any]] = {}
     seen: dict[str, datetime] = {}
     rejected: list[str] = []
+    refused: set[str] = set()
+    unknown: list[str] = []
     weather: float | None = None
     bypass: str | None = None
     pending_key: str | None = None
@@ -91,12 +100,13 @@ def parse_ssr(lines: list[LogLine], app_version: str | None) -> SsrSnapshot:
     def accept(key: str, values: list[Any], timestamp: datetime | None) -> None:
         layout = SSR_ARRAYS.get(key)
         if layout is None:
-            rejected.append(f"onbekende SSR-array {key!r}")
+            unknown.append(key)
             return
         if len(values) != layout.length:
             rejected.append(
                 f"{key} heeft {len(values)} waarden, verwacht {layout.length}"
             )
+            refused.add(key)
             return
         arrays[key] = _clean(values)
         if timestamp is not None:
@@ -140,7 +150,30 @@ def parse_ssr(lines: list[LogLine], app_version: str | None) -> SsrSnapshot:
         bypass_state=bypass,
         seen=seen,
         rejected=tuple(dict.fromkeys(rejected)),
+        refused=frozenset(refused),
+        unknown=tuple(dict.fromkeys(unknown)),
     )
+
+
+def hold(
+    previous: dict[str, list[Any]], snapshot: SsrSnapshot, drop: tuple[str, ...]
+) -> dict[str, list[Any]]:
+    """The arrays to publish: the newest accepted, else the last one held (I-10).
+
+    The app logs an array only when it changes, and the buffer is a hundred
+    lines, so an unchanged value drops out of sight. Holding it ends where doubt
+    begins: a refused layout, or a key in `drop` — the heat pump arrays once
+    `hardware:heatpump` is off (§5.0).
+    """
+    held = {
+        key: values
+        for key, values in previous.items()
+        if key not in snapshot.refused and key not in drop
+    }
+    held.update(
+        {key: values for key, values in snapshot.arrays.items() if key not in drop}
+    )
+    return held
 
 
 @dataclass(frozen=True)

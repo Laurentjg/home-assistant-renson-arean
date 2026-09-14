@@ -421,6 +421,9 @@ class SsrPosition:
     # None unless there is an answer to "which decision do I take on this series
     # in half a year" (§5.9).
     state_class: str | None = None
+    # False: the meaning only names the raw position (§4.3, I-20); whether it
+    # becomes an entity of its own is the user's call (B-03).
+    entity: bool = True
 
 
 STATE_CLASS_MEASUREMENT = "measurement"
@@ -442,6 +445,19 @@ class SsrArray:
                 return position
         return None
 
+    def raw_name(self, index: int) -> str:
+        """The display name of a raw position, following §4.3 (I-20).
+
+        The physical name always leads, so the instrument stays sortable; the
+        function follows only as far as it is known.
+        """
+        name = f"{self.key} waarde {index + 1}"
+        position = self.position(index)
+        if position is None:
+            return name
+        suffix = " (aanname)" if position.confidence == CONFIDENCE_ASSUMED else ""
+        return f"{name} — {position.name}{suffix}"
+
 
 # The value a Modbus device returns for "not available": 0x7FFF / 10. The app
 # validates ranges itself and logs it as out of bounds (S-01, §7.3).
@@ -458,6 +474,28 @@ SSR_ARRAYS: dict[str, SsrArray] = {
         slug="hp_hvac_0",
         length=12,
         positions=(
+            SsrPosition(
+                index=4,
+                key="out2_voltage",
+                name="Stuurspanning OUT2",
+                confidence=CONFIDENCE_ASSUMED,
+                entity=False,
+            ),
+            SsrPosition(
+                index=5,
+                key="out1_voltage",
+                name="Stuurspanning OUT1",
+                confidence=CONFIDENCE_ASSUMED,
+                entity=False,
+            ),
+            # 100/255 × 10 V = 3.9216 V is exactly the floor measured (bypass_min).
+            SsrPosition(
+                index=6,
+                key="out3_voltage",
+                name="Stuurspanning OUT3",
+                confidence=CONFIDENCE_CONFIRMED,
+                entity=False,
+            ),
             SsrPosition(
                 index=7,
                 key="t3_temperature",
@@ -508,6 +546,34 @@ SSR_ARRAYS: dict[str, SsrArray] = {
         slug="hp_unit_hp1",
         length=25,
         positions=(
+            SsrPosition(
+                index=6,
+                key="waterpump_active",
+                name="Pomp monoblok actief",
+                confidence=CONFIDENCE_ASSUMED,
+                entity=False,
+            ),
+            SsrPosition(
+                index=7,
+                key="flow",
+                name="Debiet",
+                confidence=CONFIDENCE_ASSUMED,
+                entity=False,
+            ),
+            SsrPosition(
+                index=8,
+                key="standby",
+                name="Standby",
+                confidence=CONFIDENCE_ASSUMED,
+                entity=False,
+            ),
+            SsrPosition(
+                index=9,
+                key="compressor_requested",
+                name="Compressor aangevraagd",
+                confidence=CONFIDENCE_ASSUMED,
+                entity=False,
+            ),
             # 0 at rest, 30–72 while running, pinned at 30 = the lower
             # modulation limit for minutes on end (2026-09-09).
             SsrPosition(
@@ -518,6 +584,13 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 device_class="frequency",
                 unit="Hz",
                 state_class=STATE_CLASS_MEASUREMENT,
+            ),
+            SsrPosition(
+                index=16,
+                key="flow_setpoint",
+                name="Aanvoersetpoint",
+                confidence=CONFIDENCE_ASSUMED,
+                entity=False,
             ),
             SsrPosition(
                 index=18,
@@ -575,16 +648,38 @@ SSR_ARRAYS: dict[str, SsrArray] = {
     # Resolved by the cycle measurement of 2026-09-09: [outside temperature,
     # operating mode, flow]. Index 1 is the live operating state — HP_UNIT/hp1
     # index 3 read HEATING throughout, also with the compressor at rest (I-11).
+    # Logged as a forced report every ten minutes; first seen 2026-09-13. Not
+    # knowing it took the whole heat pump down for two minutes each time (I-19).
+    # Candidates are in open-issues.md §4; nothing is assigned yet.
+    "HP_HYDRAULIC_ZONE/0": SsrArray(
+        key="HP_HYDRAULIC_ZONE/0",
+        slug="hp_hydraulic_zone_0",
+        length=3,
+    ),
     "HP_GLOBAL/0": SsrArray(
         key="HP_GLOBAL/0",
         slug="hp_global_0",
         length=3,
         positions=(
             SsrPosition(
+                index=0,
+                key="outside_temperature",
+                name="Buitentemperatuur",
+                confidence=CONFIDENCE_CONFIRMED,
+                entity=False,
+            ),
+            SsrPosition(
                 index=1,
                 key="operating_state",
                 name="Bedrijfstoestand",
                 confidence=CONFIDENCE_CONFIRMED,
+            ),
+            SsrPosition(
+                index=2,
+                key="flow",
+                name="Debiet",
+                confidence=CONFIDENCE_CONFIRMED,
+                entity=False,
             ),
         ),
     ),
