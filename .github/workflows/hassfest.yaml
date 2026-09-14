@@ -2,13 +2,13 @@ name: Validate with hassfest
 
 on:
   push:
-    branches: [main]
+    branches: [main, new-architecture]
   pull_request:
-    branches: [main]
+    branches: [main, new-architecture]
 
 jobs:
   hassfest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: home-assistant/actions/hassfest@master
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: home-assistant/actions/hassfest@a7c616ce81ccda50150bf1595786c71b1883fabb  # master, 2026-09-07

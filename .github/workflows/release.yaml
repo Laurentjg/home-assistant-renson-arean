@@ -1,0 +1,54 @@
+# Keeps the tag, manifest.json and the release notes telling the same version.
+#
+# HACS notifies users the moment a release is published, and that event only
+# arrives once the release already exists. So the check runs twice: early, on
+# every push and pull request, and once more on publishing — where a mismatch
+# turns the release back into a draft before HACS picks it up.
+
+name: Release
+
+on:
+  push:
+    branches: [main, new-architecture]
+  pull_request:
+    branches: [main, new-architecture]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Version consistent
+    if: github.event_name != 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Manifest and release notes
+        run: python3 .github/scripts/check_version.py
+
+  release:
+    name: Release matches the code
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      # Only to turn a wrong release back into a draft.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Tag, manifest and release notes
+        id: check
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: python3 .github/scripts/check_version.py "$TAG" "$PRERELEASE"
+
+      - name: Withdraw the release to draft
+        if: failure() && steps.check.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ github.event.release.id }}
+        run: |
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -F draft=true
+          echo "::error::Release withdrawn to draft; see the check above."

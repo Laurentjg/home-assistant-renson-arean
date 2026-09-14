@@ -1,124 +1,416 @@
-"""Binary sensor entities for gateway outputs on the Renson Arean integration."""
+"""Binary sensors: the HVAC outputs, module presence and source health."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
-from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntity,
+)
 from homeassistant.const import EntityCategory
 
-from .const import DOMAIN, KNOWN_OUTPUTS, UNKNOWN_OUTPUTS
-from .entity import RensonAreanEntity
+from .const import (
+    APP_HEATPUMP,
+    APP_LOGIC,
+    CONFIDENCE_ASSUMED,
+    HEATPUMP_ARRAYS,
+    HVAC_MODULE_MODEL,
+    HVAC_OUTPUTS,
+    PLATFORM_BINARY_SENSOR,
+    SOURCE_GATEWAY_CORE,
+    SOURCE_HARDWARE_HEATPUMP,
+    SSR_ARRAYS,
+    source_app_config,
+    source_app_log,
+    source_app_runtime,
+)
+from .entity import RensonChannelEntity, RensonEntity
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.device_registry import DeviceInfo
     from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-    from .coordinator import RensonCoordinator
+    from . import RensonConfigEntry, RensonRuntime
+    from .const import Origin, SsrPosition
+    from .coordinators import RensonCoordinator
+    from .devices import DeviceSet
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up Renson Arean binary sensor entities."""
-    coordinator: RensonCoordinator = hass.data[DOMAIN][entry.entry_id]
+class RensonBinarySensor(RensonEntity, BinarySensorEntity):
+    """A binary sensor whose value and availability are supplied as callables."""
 
-    entities: list[BinarySensorEntity] = []
-    for output_id, meta in KNOWN_OUTPUTS.items():
-        entities.append(RensonAreanOutputSensor(coordinator, output_id, meta["name"], meta["device_class"]))
-    for output_id in UNKNOWN_OUTPUTS:
-        entities.append(RensonAreanDiagnosticOutputSensor(coordinator, output_id))
-    entities.append(RensonBackupHeaterSensor(coordinator))
-    entities.append(RensonSilentModeRecurrentSensor(coordinator))
-
-    async_add_entities(entities)
-
-
-class RensonAreanOutputSensor(RensonAreanEntity, BinarySensorEntity):
-    """Binary sensor for a known HVAC gateway output."""
+    _entity_domain = "binary_sensor"
 
     def __init__(
         self,
         coordinator: RensonCoordinator,
-        output_id: int,
+        device: DeviceInfo,
+        origin: Origin,
+        key: str,
         name: str,
-        device_class_str: str,
+        source: str,
+        is_on_fn: Callable[[Any], bool | None],
+        endpoint: str | None = None,
+        device_class: BinarySensorDeviceClass | None = None,
+        entity_category: EntityCategory | None = None,
+        enabled_default: bool = True,
+        attributes_fn: Callable[[Any], dict[str, Any]] | None = None,
     ) -> None:
-        super().__init__(coordinator)
-        self._output_id = output_id
-        self._attr_name = name
-        self._attr_unique_id = f"{coordinator.device_id}_output_{output_id}"
-        self._attr_device_class = _str_to_device_class(device_class_str)
+        """Bind the sensor to its source."""
+        super().__init__(coordinator, device, origin, key, name, source, endpoint)
+        self._is_on_fn = is_on_fn
+        self._attributes_fn = attributes_fn
+        self._attr_device_class = device_class
+        self._attr_entity_category = entity_category
+        self._attr_entity_registry_enabled_default = enabled_default
 
     @property
     def is_on(self) -> bool | None:
-        output = self.coordinator.data.outputs.get(self._output_id)
-        if output is None:
-            return None
-        return output.status == 1
+        """The current state, or None when the source has nothing to say."""
+        return self._is_on_fn(self.coordinator.data)
+
+    @property
+    def available(self) -> bool:
+        """Unavailable as soon as the source is — never a frozen value (§5.0)."""
+        return super().available and self.is_on is not None
+
+    def _extra_attributes(self) -> dict[str, Any]:
+        return self._attributes_fn(self.coordinator.data) if self._attributes_fn else {}
 
 
-class RensonAreanDiagnosticOutputSensor(RensonAreanEntity, BinarySensorEntity):
-    """Diagnostic binary sensor for a gateway output with unknown function."""
+class HvacOutputBinarySensor(RensonChannelEntity, BinarySensorEntity):
+    """One output channel of the HVAC module (§5.3).
 
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    # Disabled by default — enable once the output's function is confirmed
-    _attr_entity_registry_enabled_default = False
+    The state comes from the gateway, so it keeps working when every Renson app
+    stops; only the function label depends on `hvac_config` (§5.0).
+    """
 
-    def __init__(self, coordinator: RensonCoordinator, output_id: int) -> None:
-        super().__init__(coordinator)
+    _entity_domain = "binary_sensor"
+
+    def __init__(self, coordinator, device, origin, channel, address, output_id):
+        """Bind the sensor to one output."""
+        super().__init__(
+            coordinator,
+            device,
+            origin,
+            channel,
+            HVAC_MODULE_MODEL,
+            address,
+            SOURCE_GATEWAY_CORE,
+            "get_output_status",
+        )
         self._output_id = output_id
-        self._attr_name = f"Gateway output {output_id}"
-        self._attr_unique_id = f"{coordinator.device_id}_output_{output_id}"
+        if channel.diagnostic:
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_entity_registry_enabled_default = channel.enabled_default
 
     @property
     def is_on(self) -> bool | None:
-        output = self.coordinator.data.outputs.get(self._output_id)
-        if output is None:
-            return None
-        return output.status == 1
-
-
-class RensonBackupHeaterSensor(RensonAreanEntity, BinarySensorEntity):
-    """Read-only state of the backup heater as configured in the OpenMotics plugin."""
-
-    _attr_name = "Backup heater"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_entity_registry_enabled_default = False
-
-    def __init__(self, coordinator: RensonCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.device_id}_backup_heater"
+        """The switching state of the channel."""
+        state = self.coordinator.data.outputs.get(self._output_id)
+        return state.on if state else None
 
     @property
-    def is_on(self) -> bool:
-        return self.coordinator.data.plugin_config.backup_heater
+    def available(self) -> bool:
+        """Available while the gateway reports this output."""
+        return super().available and self._output_id in self.coordinator.data.outputs
+
+    def _extra_attributes(self) -> dict[str, Any]:
+        attributes = super()._extra_attributes()
+        state = self.coordinator.data.outputs.get(self._output_id)
+        if state is not None:
+            attributes["raw_value"] = int(state.on)
+            attributes["locked"] = state.locked
+        return attributes
 
 
-class RensonSilentModeRecurrentSensor(RensonAreanEntity, BinarySensorEntity):
-    """Read-only state of the recurring silent mode schedule in the OpenMotics plugin."""
+def _app_entities(
+    runtime: RensonRuntime, app: str, device: DeviceInfo, origin: Origin
+) -> list[RensonBinarySensor]:
+    """The two entities every app device gets (§5.5–5.7)."""
+    return [
+        RensonBinarySensor(
+            runtime.topology,
+            device,
+            origin,
+            "running",
+            "App actief",
+            source_app_runtime(app),
+            lambda data, app=app: (
+                data.apps[app].running if data and app in data.apps else None
+            ),
+            endpoint="get_plugins",
+            device_class=BinarySensorDeviceClass.RUNNING,
+            entity_category=EntityCategory.DIAGNOSTIC,
+        ),
+        RensonBinarySensor(
+            runtime.config,
+            device,
+            origin,
+            # A PROBLEM sensor already reads OK/Probleem in Home Assistant, so the
+            # name is the subject only: "Brondata: OK" (I-13).
+            "source_problem",
+            "Brondata",
+            source_app_config(app),
+            lambda data, app=app: not (data and app in data.raw),
+            endpoint="get_config",
+            device_class=BinarySensorDeviceClass.PROBLEM,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            attributes_fn=lambda _data, app=app: _health_attributes(runtime, app),
+        ),
+    ]
 
-    _attr_name = "Silent mode recurring"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_entity_registry_enabled_default = False
 
-    def __init__(self, coordinator: RensonCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.device_id}_silent_mode_recurrent"
-
-    @property
-    def is_on(self) -> bool:
-        return self.coordinator.data.plugin_config.silent_mode_recurrent
+def _health_attributes(runtime: RensonRuntime, app: str) -> dict[str, Any]:
+    """Why a source is failing, straight from the health tracker (§7.2)."""
+    state = runtime.health.states.get(source_app_config(app))
+    if state is None:
+        return {}
+    return {"status": state.status, "reason": state.reason}
 
 
-_DEVICE_CLASS_MAP: dict[str, BinarySensorDeviceClass] = {
-    "opening": BinarySensorDeviceClass.OPENING,
-    "running": BinarySensorDeviceClass.RUNNING,
-}
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: RensonConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the binary sensors."""
+    runtime = entry.runtime_data
+    devices = runtime.devices
+    entities: list[BinarySensorEntity] = []
+
+    if devices.hvac is not None:
+        for output_id, channel in HVAC_OUTPUTS.items():
+            entities.append(
+                HvacOutputBinarySensor(
+                    runtime.state,
+                    devices.hvac,
+                    devices.hvac_origin,
+                    channel,
+                    devices.hvac_address,
+                    output_id,
+                )
+            )
+        entities.append(
+            RensonBinarySensor(
+                runtime.topology,
+                devices.hvac,
+                devices.hvac_origin,
+                "module_present",
+                "Module aanwezig",
+                SOURCE_GATEWAY_CORE,
+                lambda data: (
+                    data.modules[devices.hvac_address].online
+                    if data and devices.hvac_address in data.modules
+                    else False
+                ),
+                endpoint="get_modules_information",
+                device_class=BinarySensorDeviceClass.CONNECTIVITY,
+                entity_category=EntityCategory.DIAGNOSTIC,
+            )
+        )
+
+    # The Brain's own inputs. They are exposed for completeness (D-07) but are
+    # off by default: in the reference configuration nothing is wired to them.
+    for input_id in sorted(runtime.state.data.brain_inputs):
+        entities.append(
+            RensonBinarySensor(
+                runtime.state,
+                devices.brain,
+                devices.brain_origin,
+                f"input_{input_id}",
+                f"Ingang {input_id + 1}",
+                SOURCE_GATEWAY_CORE,
+                lambda data, i=input_id: data.brain_inputs.get(i),
+                endpoint="get_input_status",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                enabled_default=False,
+            )
+        )
+
+    for app, (device, origin) in devices.apps.items():
+        entities.extend(_app_entities(runtime, app, device, origin))
+
+    if devices.heatpump is not None:
+        entities.append(
+            RensonBinarySensor(
+                runtime.state,
+                devices.heatpump,
+                devices.heatpump_origin,
+                "reachable",
+                "Warmtepomp bereikbaar",
+                SOURCE_HARDWARE_HEATPUMP,
+                lambda data: data.heatpump_reachable,
+                endpoint="get_plugin_logs",
+                device_class=BinarySensorDeviceClass.CONNECTIVITY,
+                attributes_fn=_heatpump_attributes,
+            )
+        )
+        for array_key in HEATPUMP_ARRAYS:
+            for position in SSR_ARRAYS[array_key].positions:
+                if position.entity and position.platform == PLATFORM_BINARY_SENSOR:
+                    entities.append(
+                        _ssr_binary_sensor(runtime, devices, array_key, position)
+                    )
+
+    for om_id, (device, origin) in devices.thermostats.items():
+        entities.append(
+            RensonBinarySensor(
+                runtime.thermostat,
+                device,
+                origin,
+                "reachable",
+                "Thermostaat bereikbaar",
+                SOURCE_GATEWAY_CORE,
+                lambda data, i=om_id: bool(data and i in data),
+                endpoint="get_thermostat_group_status",
+                device_class=BinarySensorDeviceClass.CONNECTIVITY,
+                entity_category=EntityCategory.DIAGNOSTIC,
+                attributes_fn=_layer_l2,
+            )
+        )
+        # An on/off flag of this thermostat, not its working state: it stayed ON
+        # for two hours while the heat demand flipped three times (§5.4).
+        entities.append(
+            RensonBinarySensor(
+                runtime.thermostat,
+                device,
+                origin,
+                "enabled",
+                "Thermostaat ingeschakeld",
+                SOURCE_GATEWAY_CORE,
+                lambda data, i=om_id: (
+                    _on_off_state(data[i].state) if data and i in data else None
+                ),
+                endpoint="get_thermostat_group_status",
+                device_class=BinarySensorDeviceClass.RUNNING,
+                entity_category=EntityCategory.DIAGNOSTIC,
+                attributes_fn=_layer_l2,
+            )
+        )
+        # The controller belongs to `rensonheatpumplogic`, which syncs its
+        # hysteresis config into the gateway; the Brain only executes it and is
+        # the fallback without the app (I-16, P-06). The origin stays the
+        # thermostat's (D-15).
+        entities.append(
+            RensonBinarySensor(
+                runtime.thermostat,
+                devices.apps.get(APP_LOGIC, (devices.brain, None))[0],
+                origin,
+                "hysteresis_active",
+                f"Hysterese actief — thermostaat {om_id}",
+                SOURCE_GATEWAY_CORE,
+                lambda data, i=om_id: (
+                    data[i].hysteresis_active if data and i in data else None
+                ),
+                endpoint="get_thermostat_group_status",
+                entity_category=EntityCategory.DIAGNOSTIC,
+                attributes_fn=_layer_l2,
+            )
+        )
+
+    if APP_LOGIC in devices.apps:
+        device, origin = devices.apps[APP_LOGIC]
+        for key, name, field in (
+            ("silent_mode", "Stille modus actief", "silent_mode"),
+            (
+                "silent_mode_recurrent",
+                "Stille modus terugkerend",
+                "silent_mode_recurrent",
+            ),
+            ("backup_heater", "Backup heater ingeschakeld", "backup_heater"),
+        ):
+            entities.append(
+                RensonBinarySensor(
+                    runtime.config,
+                    device,
+                    origin,
+                    key,
+                    name,
+                    source_app_config(APP_LOGIC),
+                    lambda data, f=field: (
+                        getattr(data.logic, f) if data and data.logic else None
+                    ),
+                    endpoint="get_config",
+                    entity_category=(
+                        EntityCategory.DIAGNOSTIC
+                        if key == "silent_mode_recurrent"
+                        else None
+                    ),
+                )
+            )
+
+    async_add_entities(entities)
 
 
-def _str_to_device_class(value: str) -> BinarySensorDeviceClass | None:
-    return _DEVICE_CLASS_MAP.get(value)
+def _ssr_binary_sensor(
+    runtime: RensonRuntime,
+    devices: DeviceSet,
+    array_key: str,
+    position: SsrPosition,
+) -> RensonBinarySensor:
+    """A true/false SSR position of the heat pump, as `sensor.py` does the rest.
+
+    It disappears together with `hardware:heatpump`, and anything that is not a
+    boolean is no value rather than a guess (§5.0, D-14).
+    """
+    return RensonBinarySensor(
+        runtime.state,
+        devices.heatpump,
+        devices.heatpump_origin,
+        position.key,
+        position.name,
+        source_app_log(APP_LOGIC),
+        lambda data, k=array_key, i=position.index: _ssr_bool(data, k, i),
+        endpoint="get_plugin_logs",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        attributes_fn=lambda _data, p=position, k=array_key: {
+            "function_confidence": p.confidence,
+            "array": k,
+            "position": p.index + 1,
+            "verification": (
+                "te controleren, zie non-public/design/open-issues.md"
+                if p.confidence == CONFIDENCE_ASSUMED
+                else None
+            ),
+        },
+    )
+
+
+def _ssr_bool(data, array_key: str, index: int) -> bool | None:
+    if not data.heatpump_reachable:
+        return None
+    value = data.ssr.value(array_key, index)
+    return value if isinstance(value, bool) else None
+
+
+def _layer_l2(_data) -> dict[str, Any]:
+    """The OpenMotics layer of the thermostat model (§5.4)."""
+    return {"layer": "L2"}
+
+
+def _on_off_state(state: str | None) -> bool | None:
+    if state == "ON":
+        return True
+    if state == "OFF":
+        return False
+    return None
+
+
+def _heatpump_attributes(data) -> dict[str, Any]:
+    """The evidence behind the state, and what the driver app says about itself.
+
+    The `Could not enable Modbus` text stays readable here as a reason, never as
+    the state: the app that logs it has no Modbus configured at all (§5.7).
+    """
+    attributes: dict[str, Any] = {
+        "last_seen": data.heatpump_seen.isoformat() if data.heatpump_seen else None,
+        "evidence": " of ".join(HEATPUMP_ARRAYS),
+    }
+    health = data.app_health.get(APP_HEATPUMP)
+    if health is not None:
+        attributes["driver_reason"] = health.reason
+        attributes["watchdog_restarts"] = health.watchdog_restarts
+    return attributes

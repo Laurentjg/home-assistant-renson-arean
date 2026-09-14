@@ -1,20 +1,9 @@
 {
-  "options": {
-    "step": {
-      "init": {
-        "title": "Renson Arean — instellen",
-        "description": "Pas de integratie-instellingen aan. Het Modbus slave-adres moet overeenkomen met het thermostaatadres in de RensonThermostat-plugin (standaard: 41).",
-        "data": {
-          "modbus_slave": "Modbus slave-adres thermostaat (1–247)"
-        }
-      }
-    }
-  },
   "config": {
     "step": {
       "user": {
         "title": "Renson Arean instellen",
-        "description": "Voer de verbindingsgegevens in van de OpenMotics gateway.",
+        "description": "Voer de verbindingsgegevens in van de OpenMotics-gateway op de Brain module. De integratie werkt volledig op je eigen netwerk; een Renson One-account is niet nodig.\n\nGebruik een aparte gatewaygebruiker voor Home Assistant, niet je installateurs- of hoofdaccount.",
         "data": {
           "host": "IP-adres of hostnaam (zonder http(s)://)",
           "username": "Gebruikersnaam",
@@ -23,8 +12,9 @@
       },
       "reauth_confirm": {
         "title": "Opnieuw authenticeren",
-        "description": "Voer het nieuwe wachtwoord in voor de OpenMotics gateway.",
+        "description": "De gateway weigerde de opgeslagen inloggegevens. Voer ze opnieuw in.",
         "data": {
+          "username": "Gebruikersnaam",
           "password": "Wachtwoord"
         }
       }
@@ -32,11 +22,50 @@
     "error": {
       "cannot_connect": "Kan niet verbinden met de gateway. Controleer het IP-adres.",
       "invalid_auth": "Ongeldige inloggegevens. Controleer gebruikersnaam en wachtwoord.",
-      "unknown": "Onverwachte fout. Zie de logbestanden voor meer informatie."
+      "host_already_configured": "Deze host is al geconfigureerd. De gateway levert geen serienummer, dus een dubbele installatie is niet automatisch te herkennen — voeg hem alleen toe als het werkelijk een tweede installatie is."
     },
     "abort": {
-      "already_configured": "Dit apparaat is al geconfigureerd.",
       "reauth_successful": "Opnieuw authenticeren geslaagd."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Renson Arean — instellingen",
+        "description": "Elke bron heeft een eigen pollinterval, omdat ze sterk verschillen in hoe snel ze veranderen. De ondergrenzen beschermen de Modbus-bus, die gedeeld wordt met de drie Renson-apps.",
+        "data": {
+          "verify_ssl": "TLS-certificaat verifiëren (standaard uit: de gateway gebruikt een zelfondertekend certificaat)",
+          "thermostat_slave": "Modbus slave-adres thermostaat (1–247)",
+          "thermostat_connected_to": "De wandthermostaat is aangesloten op",
+          "interval_thermostat": "Thermostaatstatus, seconden",
+          "interval_state": "Uitgangen en app-log, seconden",
+          "interval_config": "App-configuratie, seconden",
+          "interval_topology": "Modules, apps en versies, seconden"
+        }
+      }
+    }
+  },
+  "selector": {
+    "thermostat_connected_to": {
+      "options": {
+        "brain": "Brain module",
+        "hvac": "HVAC module"
+      }
+    }
+  },
+  "entity": {
+    "climate": {
+      "renson_thermostat": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "schedule": "Klokprogramma",
+              "away": "Afwezig",
+              "manual": "Handmatig"
+            }
+          }
+        }
+      }
     }
   }
 }
