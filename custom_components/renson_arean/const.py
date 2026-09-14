@@ -20,7 +20,8 @@ CONFIG_ENTRY_VERSION = 2
 
 CONF_HOST = "host"
 CONF_USERNAME = "username"
-CONF_PASSWORD = "password"  # nosec B105 — the name of the config key, not a password
+# The name of the config key, not a password (bandit B105, ruff S105).
+CONF_PASSWORD = "password"  # nosec B105  # noqa: S105
 CONF_VERIFY_SSL = "verify_ssl"
 CONF_THERMOSTAT_SLAVE = "thermostat_slave"
 CONF_THERMOSTAT_CONNECTED_TO = "thermostat_connected_to"

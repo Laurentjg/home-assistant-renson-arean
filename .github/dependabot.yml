@@ -9,6 +9,9 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: "/"
+    # Development happens here until 2026.9.0 is merged; bumps against main
+    # would test workflows that are no longer the ones in use.
+    target-branch: new-architecture
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

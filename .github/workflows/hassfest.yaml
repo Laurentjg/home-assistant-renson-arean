@@ -2,9 +2,9 @@ name: Validate with hassfest
 
 on:
   push:
-    branches: [main]
+    branches: [main, new-architecture]
   pull_request:
-    branches: [main]
+    branches: [main, new-architecture]
 
 jobs:
   hassfest:
