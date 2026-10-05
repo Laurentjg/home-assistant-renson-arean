@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Renson Arean card — demo</title>
+<!--
+  Demo page: the built card against a simulated Home Assistant. Not part of the card.
+  Open this file in a browser; no server and no Home Assistant needed.
+  URL parameters give reproducible renders, for example:
+    ?theme=dark&state=COOLING&silent=1&gas=1&power=none&heat=none&quality=sketch&hz=60&lang=en&controls=0&width=1200
+-->
+<style>
+  /* Default values of the Home Assistant default theme. */
+  .ha-light { --primary-background-color:#fafafa; --card-background-color:#fff; --primary-text-color:#212121;
+    --secondary-text-color:#727272; --divider-color:rgba(0,0,0,.12); }
+  .ha-dark { --primary-background-color:#111111; --card-background-color:#1c1c1c; --primary-text-color:#e1e1e1;
+    --secondary-text-color:#9b9b9b; --divider-color:rgba(225,225,225,.12); }
+  :root {
+    --ha-font-family-body: Roboto, Noto, "Noto Sans", sans-serif;
+    --ha-font-size-s:12px; --ha-font-size-m:14px; --ha-font-size-l:16px; --ha-font-size-xl:20px; --ha-font-size-2xl:24px;
+    --ha-font-weight-normal:400; --ha-font-weight-medium:500;
+  }
+  body { margin:0; font-family:var(--ha-font-family-body); background:var(--primary-background-color);
+    color:var(--primary-text-color); -webkit-font-smoothing:antialiased; }
+  .page { max-width:800px; margin:0 auto; padding:16px; }
+  .controls { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; font-size:13px; align-items:center; }
+  .controls button, .controls select { font:inherit; padding:4px 10px; border-radius:8px;
+    border:1px solid var(--divider-color); background:var(--card-background-color);
+    color:var(--primary-text-color); cursor:pointer; }
+  .controls button[aria-pressed="true"] { background:var(--primary-text-color); color:var(--card-background-color); }
+  ha-card { display:block; background:var(--card-background-color); border-radius:12px;
+    box-shadow:0 1px 3px rgba(0,0,0,.12); }
+  #log { font-size:12px; color:var(--secondary-text-color); margin-top:8px; min-height:1.4em; }
+</style>
+</head>
+<body class="ha-light">
+<div class="page" id="page">
+  <div class="controls" id="controls"></div>
+  <div id="host"></div>
+  <div id="log"></div>
+</div>
+<script>
+  // Stand-in for Home Assistant's own card frame.
+  customElements.define('ha-card', class extends HTMLElement {});
+</script>
+<script src="../../custom_components/renson_arean/frontend/renson-arean-card.js"></script>
+<script>
+const q = new URLSearchParams(location.search);
+const S = {
+  theme: q.get('theme') === 'dark' ? 'ha-dark' : 'ha-light',
+  state: q.get('state') || 'HEATING',          // HEATING | COOLING | OFF | unavailable
+  silent: q.get('silent') === '1',
+  gas: q.get('gas') === '1',
+  power: q.get('power') || 'ok',               // ok | unavailable | none
+  heat: q.get('heat') || 'ok',                 // ok | none   (heat energy counter)
+  quality: q.get('quality') || 'detailed',
+  hz: q.has('hz') ? Number(q.get('hz')) : 45,
+  lang: q.get('lang') || 'nl',
+};
+if (q.has('width')) document.getElementById('page').style.maxWidth = q.get('width') + 'px';
+
+const sensor = (value, unit) => ({ state: String(value), attributes: unit ? { unit_of_measurement: unit } : {} });
+
+function states() {
+  const running = S.state === 'HEATING' || S.state === 'COOLING';
+  const cooling = S.state === 'COOLING';
+  const gone = S.state === 'unavailable';
+  const hp = (value, unit) => (gone ? sensor('unavailable', unit) : sensor(value, unit));
+  const all = {
+    'sensor.heatpump_operating_state': hp(S.state),
+    'binary_sensor.app_rensonheatpumplogic_silent_mode': sensor(S.silent ? 'on' : 'off'),
+    'sensor.heatpump_warranty_number': sensor('RS-xxxx-xxxx'),
+    'sensor.heatpump_outside_temperature': hp(12.4, '°C'),
+    'sensor.heatpump_compressor_frequency': hp(running ? S.hz : 0, 'Hz'),
+    'binary_sensor.heatpump_waterpump_active': hp(running ? 'on' : 'off'),
+    'sensor.heatpump_return_temperature': hp(cooling ? 18.4 : 21.8, '°C'),
+    'sensor.heatpump_flow_temperature': hp(cooling ? 14.9 : 26.3, '°C'),
+    'sensor.hvac_module_in1_pressure': sensor(1.84, 'bar'),
+    'sensor.heatpump_flow': hp(running ? 0.936 : 0, 'm³/h'),
+    'sensor.heatpump_mains_voltage': hp(231, 'V'),
+    'sensor.heatpump_current': hp(running ? 5.4 : 0.2, 'A'),
+    'climate.thermostat_0': { state: cooling ? 'cool' : 'heat',
+      attributes: { current_temperature: 20.4, temperature: 20.5, hvac_action: running ? (cooling ? 'cooling' : 'heating') : 'idle' } },
+    'binary_sensor.gas_boiler': sensor(S.gas ? 'on' : 'off'),
+    'sensor.heat_pump_heat_energy': sensor(4321.5, 'kWh'),
+  };
+  if (S.power !== 'none') {
+    const ok = S.power === 'ok';
+    all['sensor.heat_pump_power'] = sensor(ok ? (running ? 1240 : 46) : 'unavailable', 'W');
+    all['sensor.heat_pump_energy'] = sensor(ok ? 1180.2 : 'unavailable', 'kWh');
+  }
+  return all;
+}
+
+function config() {
+  const entities = {
+    status: 'sensor.heatpump_operating_state',
+    silent_mode: 'binary_sensor.app_rensonheatpumplogic_silent_mode',
+    serial: 'sensor.heatpump_warranty_number',
+    outdoor_temp: 'sensor.heatpump_outside_temperature',
+    compressor_hz: 'sensor.heatpump_compressor_frequency',
+    fan_running: 'sensor.heatpump_operating_state',
+    circulation_pump: 'binary_sensor.heatpump_waterpump_active',
+    cold_temp: 'sensor.heatpump_return_temperature',
+    hot_temp: 'sensor.heatpump_flow_temperature',
+    pressure: 'sensor.hvac_module_in1_pressure',
+    flow: 'sensor.heatpump_flow',
+    voltage: 'sensor.heatpump_mains_voltage',
+    current: 'sensor.heatpump_current',
+    room_temp: 'climate.thermostat_0',
+    setpoint: 'climate.thermostat_0',
+    heat_demand: 'climate.thermostat_0',
+    gas_boiler: 'binary_sensor.gas_boiler',
+  };
+  if (S.heat !== 'none') entities.heat_energy = 'sensor.heat_pump_heat_energy';
+  if (S.power !== 'none') { entities.power = 'sensor.heat_pump_power'; entities.elec_energy = 'sensor.heat_pump_energy'; }
+  return { type: 'custom:renson-arean-card', quality: S.quality, entities };
+}
+
+// Simulated long-term statistics: a year of daily and two days of hourly changes.
+const COP_DAYS = [3.6, 4.1, 3.8, 3.2, 3.5, 4.4, 4.2, 3.9, 3.1, 3.7, 4.0, 4.3, 3.8, 4.0];
+function callWS(message) {
+  const now = Date.now();
+  const result = {};
+  for (const id of message.statistic_ids) {
+    const heat = id === 'sensor.heat_pump_heat_energy';
+    const buckets = [];
+    if (message.period === 'day') {
+      const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
+      for (let ago = 365; ago >= 0; ago--) {
+        const start = new Date(midnight); start.setDate(start.getDate() - ago);
+        const cop = ago < 14 ? COP_DAYS[13 - ago] : 3.4 + ((ago * 7) % 10) / 20;
+        const elec = ago === 0 ? 6.2 : 5 + ((ago * 3) % 7);
+        buckets.push({ start: start.getTime(), change: heat ? elec * cop : elec });
+      }
+    } else {
+      for (let ago = 25; ago >= 0; ago--) {
+        buckets.push({ start: now - ago * 3600000, change: heat ? 1.04 : 0.26 });
+      }
+    }
+    result[id] = buckets;
+  }
+  return Promise.resolve(result);
+}
+
+const hass = () => ({
+  states: states(),
+  locale: { language: S.lang, number_format: 'language' },
+  language: S.lang,
+  config: { unit_system: { temperature: '°C' } },
+  callWS,
+});
+
+let card;
+function mount() {
+  document.body.className = S.theme;
+  const host = document.getElementById('host');
+  host.innerHTML = '';
+  card = document.createElement('renson-arean-card');
+  card.setConfig(config());
+  card.hass = hass();
+  host.appendChild(card);
+}
+function refresh() { document.body.className = S.theme; card.hass = hass(); }
+
+document.addEventListener('hass-more-info', (event) => {
+  document.getElementById('log').textContent = 'more-info: ' + event.detail.entityId;
+});
+
+function controls() {
+  const select = (key, options, remount) =>
+    `<select onchange="S.${key}=this.value;${remount ? 'mount()' : 'refresh()'}">` +
+    options.map(([v, l]) => `<option value="${v}"${String(S[key]) === v ? ' selected' : ''}>${l}</option>`).join('') + '</select>';
+  const toggle = (key, label) =>
+    `<button aria-pressed="${S[key]}" onclick="S.${key}=!S.${key};controls();refresh()">${label}</button>`;
+  document.getElementById('controls').innerHTML =
+    select('state', [['HEATING', 'Verwarmen'], ['COOLING', 'Koelen'], ['OFF', 'Uit'], ['unavailable', 'Warmtepomp onbereikbaar']]) +
+    toggle('silent', 'Stille modus') + toggle('gas', 'Gasketel') +
+    select('power', [['ok', 'Vermogensmeting: ok'], ['unavailable', 'Vermogensmeting: onbeschikbaar'], ['none', 'Vermogensmeting: niet ingesteld']], true) +
+    select('heat', [['ok', 'Warmteteller: ingesteld'], ['none', 'Warmteteller: niet ingesteld']], true) +
+    `<label>Compressor <input type="range" min="0" max="90" value="${S.hz}" oninput="S.hz=+this.value;refresh()"></label>` +
+    select('theme', [['ha-light', 'HA licht'], ['ha-dark', 'HA donker']]) +
+    select('quality', [['detailed', 'Pomp: uitgewerkt'], ['sketch', 'Pomp: schets']], true) +
+    select('lang', [['nl', 'Nederlands'], ['en', 'English']]);
+}
+if (q.get('controls') === '0') document.getElementById('controls').style.display = 'none';
+controls();
+mount();
+</script>
+</body>
+</html>
