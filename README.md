@@ -20,6 +20,7 @@ A fully local Home Assistant custom integration for the **Renson Arean heat pump
 | Heat pump flow, return, compressor frequency, operating state and reachability | ✅ | ✅ |
 | Silent mode, backup heater, control parameters | read-only | read-only |
 | Module and app versions, firmware updates available | ✅ | ✅ |
+| A dashboard card that draws the heat pump with its live values | ✅ | ✅ |
 | Edit preset temperatures (what "away" means in degrees) | ❌ | ❌ cloud only |
 | Manage the heating schedule | ❌ | ❌ cloud only |
 
@@ -84,6 +85,41 @@ Each app on the Brain is its own device, named exactly as OpenMotics names it, w
 Flow and return temperature, flow rate, flow temperature setpoint, compressor frequency, operating state, domestic hot water temperature, mains voltage, current drawn and the outside temperature the control logic is working with. Two on/off indicators show whether the compressor is *requested* (this comes on about two minutes before it actually runs) and whether the pump inside the monobloc is running.
 
 **Heat pump reachable** follows the heat pump itself, not the app that reads it. If the heat pump loses power or its bus link while the Brain keeps running, this entity turns off within three minutes, all heat pump values go unavailable together, and one warning is logged — with one recovery line, including the outage duration, when it comes back.
+
+---
+
+## The dashboard card
+
+The integration brings its own dashboard card: a drawn heat pump with the values around it, where they belong. There is nothing extra to install — the card comes with the integration and is available after a restart.
+
+**What it shows**
+
+- **On the pump:** the fan turns while the heat pump runs, the water flows through the pipes while the pump circulates, and ten bars show how hard the compressor works. In silent mode a moon appears over the fan and it turns slower. In cooling mode red and blue swap sides.
+- **Around the pump:** outside temperature, flow and return temperature, flow rate, system pressure, mains voltage and current, and the heat output — calculated from flow rate × temperature difference.
+- **In the boxes:** operating state and silent mode; what your thermostat measures, wants and asks for; and an energy overview with the COP per day over the last 14 days and the COP over 24 hours, 2 months and 12 months.
+
+The card only shows; it does not change settings. Tap a value to open its entity. It follows your Home Assistant theme, light or dark, and writes numbers the way your profile says. Its texts are in Dutch or English, following your language.
+
+**Adding it**
+
+Edit a dashboard, choose **Add card** and search for *Renson*. The card fills in the entities of this integration by itself; you can change each one in the editor. In YAML it is `type: custom:renson-arean-card`. The card is wide: give it a full-width section or a panel view.
+
+If the card does not appear in the list after an update, reload the browser page once without cache (Ctrl+Shift+R).
+
+**Electricity and COP need your own meter**
+
+The integration measures no electrical power (see [Long-term statistics](#long-term-statistics)), so the card has optional places for your own sensors:
+
+| In the editor | What to choose | What you get |
+|---|---|---|
+| Electrical power | your meter's power sensor | power next to "electricity", and the live COP |
+| Electrical energy counter | your meter's kWh sensor | electricity today, and all COP figures |
+| Heat energy counter | the heat energy sensor you build in [step 3](#step-3--cop-per-day) below (`sensor.heat_pump_heat_energy`) | heat today, and all COP figures |
+| Gas boiler active | an entity of your own that knows whether the boiler burns | the flame in the heat demand box |
+
+Without them the card still works: what cannot be shown is left out, with a short note in the energy box saying which sensor is missing. A value that is temporarily unavailable shows as a grey dash, never as zero. The COP figures come from Home Assistant's long-term statistics and are always total heat ÷ total electricity over the period.
+
+The full list of settings is in [`frontend/README.md`](frontend/README.md).
 
 ---
 

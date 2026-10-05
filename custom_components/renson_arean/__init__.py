@@ -10,10 +10,15 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.loader import async_get_integration
 
 from .api.client import RensonAuthError, RensonClient, RensonError
 from .const import (
@@ -32,6 +37,7 @@ from .const import (
     DEFAULT_INTERVAL_TOPOLOGY,
     DEFAULT_CONNECTED_TO,
     DEFAULT_VERIFY_SSL,
+    DOMAIN,
     PLATFORMS,
 )
 from .coordinators.config import ConfigCoordinator
@@ -45,8 +51,15 @@ from .thermostat.confirm import ConfirmationWindow
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.typing import ConfigType
 
 _LOGGER = logging.getLogger(__name__)
+
+# Set up from the UI only; `async_setup` exists to serve the dashboard card.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+CARD_URL_BASE = f"/{DOMAIN}"
+CARD_FILENAME = "renson-arean-card.js"
 
 
 @dataclass
@@ -74,6 +87,27 @@ type RensonConfigEntry = ConfigEntry[RensonRuntime]
 def _interval(entry: ConfigEntry, key: str, default: timedelta) -> timedelta:
     seconds = entry.options.get(key)
     return timedelta(seconds=seconds) if seconds else default
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Serve the dashboard card.
+
+    Once per Home Assistant instance, not per config entry: registering a
+    static path twice fails on a second entry and on every reload.
+    """
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(
+                CARD_URL_BASE,
+                str(Path(__file__).parent / "frontend"),
+                cache_headers=False,
+            )
+        ]
+    )
+    # The version in the URL makes the browser fetch the new card after an update.
+    integration = await async_get_integration(hass, DOMAIN)
+    add_extra_js_url(hass, f"{CARD_URL_BASE}/{CARD_FILENAME}?v={integration.version}")
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: RensonConfigEntry) -> bool:

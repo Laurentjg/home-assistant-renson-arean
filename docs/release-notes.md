@@ -4,6 +4,25 @@ What each version means for you as a user.
 
 ---
 
+## 2026.10.0 — in preparation
+
+### What gets better
+
+- **A dashboard card for your heat pump.** The integration now brings its own card: a drawn heat pump with the fan turning while it runs, water flowing through the pipes, ten bars for the compressor load, and the temperatures, flow rate, pressure, voltage and heat output right next to the part they belong to. Add it from the card picker by searching for *Renson*; it fills in its entities by itself. See [The dashboard card](../README.md#the-dashboard-card) in the README.
+- **COP at a glance, if you have your own meter.** Point the card at your meter's power and energy sensors and at the heat energy sensor from the README recipe, and it shows the live COP, the COP per day over the last 14 days, and the COP over 24 hours, 2 months and 12 months. Without a meter the card leaves those parts out and says so.
+
+### What you need to change
+
+Nothing. The card comes with the integration; restart Home Assistant after updating. Your existing entities and dashboards are untouched.
+
+### One more thing to know
+
+- **The card shows, it does not operate.** Changing the setpoint or the preset stays on your thermostat card.
+- **No gas boiler and no operating hours yet.** The card has a place for both, but the integration does not supply them; the rows stay hidden until you connect an entity of your own.
+- **Defrosting and hot water have no picture of their own yet**, and on a narrow screen the card shrinks as a whole rather than rearranging itself.
+
+---
+
 ## 2026.9.0 — 14 September 2026
 
 This version reorganises the integration so that it follows how a Renson installation is actually built. Functionally you can do the same things, but you will find them in different places and **every entity id changes**. Upgrading means removing the integration and adding it again. Read this before you start.
