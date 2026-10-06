@@ -8,9 +8,9 @@ name: Security
 
 on:
   push:
-    branches: [main, new-architecture]
+    branches: [main]
   pull_request:
-    branches: [main, new-architecture]
+    branches: [main]
   schedule:
     # Weekly, so a CVE published after a release still surfaces (SEC-07).
     - cron: "0 6 * * 1"
