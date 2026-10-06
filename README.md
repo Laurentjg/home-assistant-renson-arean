@@ -4,7 +4,7 @@ A fully local Home Assistant custom integration for the **Renson Arean heat pump
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 ![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.6%2B-blue)
-![Version](https://img.shields.io/badge/version-2026.9.0-green)
+![Version](https://img.shields.io/badge/version-2026.10.0-green)
 
 > **You do not need a Renson One account.** Every feature below works on a network with no internet access at all. The integration never contacts the Renson cloud — not for data, not for telemetry, not for anything.
 
@@ -102,9 +102,9 @@ The card only shows; it does not change settings. Tap a value to open its entity
 
 **Adding it**
 
-Edit a dashboard, choose **Add card** and search for *Renson*. The card fills in the entities of this integration by itself; you can change each one in the editor. In YAML it is `type: custom:renson-arean-card`. The card is wide: give it a full-width section or a panel view.
+Edit a dashboard, choose **Add card** and search for *Renson*. The card fills in the entities of this integration by itself; you can change each one in the editor. In YAML it is `type: custom:renson-arean-card`. The card adapts to the room it gets: in a full-width section or a panel view it is one wide picture, and in a normal section or on a phone it stacks the same parts below each other, so the text keeps the size of the rest of your dashboard.
 
-If the card does not appear in the list after an update, reload the browser page once without cache (Ctrl+Shift+R).
+If the card does not appear in the list after an update, or shows a configuration error in one browser only, that browser still holds an older copy: reload the page once without cache (Ctrl+Shift+R).
 
 **Electricity and COP need your own meter**
 
@@ -343,6 +343,7 @@ The gateway reports no serial number, so the integration cannot tell two identic
 | Outputs and app log interval | 30 s | Do not raise much: the log buffer holds about 90 seconds. |
 | App configuration interval | 5 min | These are settings, not measurements. |
 | Modules, apps and versions | 15 min | Rarely changes. |
+| Voltage measurement offset | 0 V | Added to the heat pump's mains voltage reading, from −10 to +10 V. Only a certified professional should measure the real voltage at the monobloc. |
 
 ---
 

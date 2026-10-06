@@ -112,6 +112,21 @@ from the recipe have one. COP per day and the rolling COP over 24 hours, 2 month
 always total heat ÷ total electricity over the period, never a mean of separate COP values. They
 refresh every five minutes.
 
+### Two layouts
+
+The card measures its own width. From 640 px it draws the wide layout, on an 800 × 600 grid
+(`LAYOUT` in `card.js`). Below that it draws the stacked layout on a 400 px wide grid (`NARROW`):
+the values in a row above and below a smaller pump, then the boxes below each other, as high as
+their rows. A dashboard section is about 500 px wide and a phone about 400 px, so both get the
+stacked layout with text at Home Assistant's own sizes; the wide layout is for a full-width
+section or a panel view. In the demo page, `?width=420` shows the stacked layout.
+
+### How the integration serves the card
+
+`async_setup` in `__init__.py` serves this folder at `/renson_arean` and adds the card to the
+frontend with a hash of the file in the URL, so a browser fetches every new build instead of
+reusing a cached one.
+
 ### Colours
 
 The drawing uses its own variables, which a theme can override: `--wp-cold`, `--wp-hot`,
@@ -120,8 +135,4 @@ theme.
 
 ## Not built yet
 
-- The integration does not serve the card yet. That takes changes in `__init__.py` and
-  `manifest.json`; until then the card can only be tried in the demo page, or by registering the
-  built file by hand as a dashboard resource.
-- Defrost, a fault or offline state, hot water, and a stacked layout for narrow screens are not
-  designed yet. Below 800 px the card scales down as a whole.
+- Defrost, a fault or offline state, and hot water are not designed yet.

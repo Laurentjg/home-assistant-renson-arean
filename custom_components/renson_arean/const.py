@@ -29,9 +29,11 @@ CONF_INTERVAL_THERMOSTAT = "interval_thermostat"
 CONF_INTERVAL_STATE = "interval_state"
 CONF_INTERVAL_CONFIG = "interval_config"
 CONF_INTERVAL_TOPOLOGY = "interval_topology"
+CONF_VOLTAGE_OFFSET = "voltage_offset"
 
 DEFAULT_THERMOSTAT_SLAVE = 41
 DEFAULT_VERIFY_SSL = False
+DEFAULT_VOLTAGE_OFFSET = 0.0
 
 # Per-source intervals (§6.2). The lower bounds protect the Modbus bus (CN-01)
 # and keep the half-megabyte log response from being re-parsed pointlessly.
@@ -50,6 +52,13 @@ MIN_INTERVAL_TOPOLOGY = 300
 CONNECTED_TO_BRAIN = "brain"
 CONNECTED_TO_HVAC = "hvac"
 DEFAULT_CONNECTED_TO = CONNECTED_TO_BRAIN
+
+# Fixed correction on the monobloc's own mains voltage reading, in V, added to
+# the measured value. Applied in Home Assistant only: nothing is written to the
+# heat pump (D-06), and the raw position stays uncorrected (D-18).
+MIN_VOLTAGE_OFFSET = -10.0
+MAX_VOLTAGE_OFFSET = 10.0
+VOLTAGE_OFFSET_STEP = 0.1
 
 # --- Sources (§5.0) ----------------------------------------------------------
 

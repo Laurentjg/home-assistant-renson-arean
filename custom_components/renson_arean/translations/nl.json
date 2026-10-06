@@ -40,7 +40,11 @@
           "interval_thermostat": "Thermostaatstatus, seconden",
           "interval_state": "Uitgangen en app-log, seconden",
           "interval_config": "App-configuratie, seconden",
-          "interval_topology": "Modules, apps en versies, seconden"
+          "interval_topology": "Modules, apps en versies, seconden",
+          "voltage_offset": "Offset spanningsmeting, volt"
+        },
+        "data_description": {
+          "voltage_offset": "De spanningssensor in het Renson Arean R290-monoblok kan afwijken van de werkelijke netspanning. Vul hier een vaste correctie in; die wordt bij de gemeten waarde opgeteld (negatief als het monoblok te hoog meet). Waarschuwing: laat de spanning aan het monoblok alleen meten door een gecertificeerd vakman: gevaar voor elektrische schok, en het toestel bevat brandbaar koudemiddel (R290, propaan)."
         }
       }
     }

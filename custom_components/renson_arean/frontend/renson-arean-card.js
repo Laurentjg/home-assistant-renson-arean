@@ -1021,7 +1021,8 @@ class RensonAreanCardEditor extends HTMLElement {
 }
 
   // ---- card.js ----
-/* The card element. Draws on one 800 × 600 reference grid; see LAYOUT. */
+/* The card element. A wide card draws on an 800 × 600 reference grid (LAYOUT);
+ * a narrow one stacks the same parts on a 400 px wide grid (NARROW). */
 
 
 const CARD_TAG = 'renson-arean-card';
@@ -1048,6 +1049,30 @@ const LAYOUT = {
 // Labels hang on anchor points of the drawing, not on fixed coordinates.
 const PROJECT = WP.makeProjection(LAYOUT.projection);
 const ANCHORS = WP.anchors(PROJECT);
+
+// Below this card width the wide grid is too small to read, and the card stacks:
+// the values around a smaller pump, the boxes below each other. A dashboard
+// section or a phone is about this narrow; a panel view or a wide section is not.
+const NARROW_BELOW = 640;
+
+// The stacked layout, in px on a reference width of 400 px. Its height follows
+// the content.
+const NARROW = {
+  w: 400,
+  margin: 16,
+  // The same drawing, placed smaller: screen = offset + k × reference.
+  pump: { k: 0.6, dx: -13, dy: 30 },
+  compressorLabelGap: 12,
+  stackBase: 104,
+  belowPump: 270,
+  boxesTop: 358,
+  boxGap: 12,
+  boxPad: 18,
+  chart: { inset: 34, labelGap: 26, top: 14, height: 72, max: 5, barW: 15, barPitch: 22.5 },
+  cops: { top: 44, valueGap: 28, step: 112 },
+};
+
+const WIDE_PUMP = { k: 1, dx: 0, dy: 0 };
 
 const COLD = 'var(--wp-cold, #2b7fd6)';
 const HOT = 'var(--wp-hot, #d9372b)';
@@ -1136,9 +1161,10 @@ function rows(b, list) {
     .join('');
 }
 
-function silentBadge() {
-  const [x, y] = ANCHORS.fanCenter;
-  return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)})">
+function silentBadge(pump) {
+  const x = pump.dx + pump.k * ANCHORS.fanCenter[0];
+  const y = pump.dy + pump.k * ANCHORS.fanCenter[1];
+  return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)}) scale(${pump.k})">
     <circle r="30" fill="rgba(18,20,23,.88)" stroke="${GOLD}" stroke-width="1.5"/>
     <path d="M6,-13.7 A15,15 0 1 0 6,13.7 A17,17 0 0 1 6,-13.7Z" transform="translate(-4,2)" fill="${GOLD}"/>
     <g style="fill:${GOLD};font-weight:600">
@@ -1156,21 +1182,10 @@ function flame(x, y, on) {
   return `<g transform="translate(${x},${y}) scale(1.05)">${outer}${core}</g>`;
 }
 
-function renderEnergy(energy, lang) {
-  const L = LAYOUT;
-  const be = L.boxEnergy;
-  let s = box(be) + text(be.x + 16, be.y + 28, t(lang, 'energy'), 't-title');
-  s += rows({ ...be, w: 260 }, energy.rows);
-
-  if (energy.mode !== 'chart') {
-    s += text(L.chart.x, be.y + 54, t(lang, `${energy.mode}_1`), 't-row-l');
-    s += text(L.chart.x, be.y + 76, t(lang, `${energy.mode}_2`), 't-row-l');
-    return s;
-  }
-
-  const ch = L.chart;
+// The COP bars of the last days. `ch` is { x, w, top, bottom, max, barW, barPitch }.
+function renderChart(energy, ch) {
   const height = ch.bottom - ch.top;
-  s += text(ch.x, be.y + 28, t(lang, 'chart'), 't-label');
+  let s = '';
   for (let v = 0; v <= ch.max; v++) {
     const y = ch.bottom - (v / ch.max) * height;
     s += `<line class="${v ? 'grid' : 'axis0'}" x1="${ch.x}" x2="${ch.x + ch.w}" y1="${y}" y2="${y}"/>`;
@@ -1190,6 +1205,23 @@ function renderEnergy(energy, lang) {
       s += text(x + ch.barW / 2, ch.bottom + 16, `${date.getDate()}/${date.getMonth() + 1}`, 't-axis', 'middle');
     }
   });
+  return s;
+}
+
+function renderEnergy(energy, lang) {
+  const L = LAYOUT;
+  const be = L.boxEnergy;
+  let s = box(be) + text(be.x + 16, be.y + 28, t(lang, 'energy'), 't-title');
+  s += rows({ ...be, w: 260 }, energy.rows);
+
+  if (energy.mode !== 'chart') {
+    s += text(L.chart.x, be.y + 54, t(lang, `${energy.mode}_1`), 't-row-l');
+    s += text(L.chart.x, be.y + 76, t(lang, `${energy.mode}_2`), 't-row-l');
+    return s;
+  }
+
+  s += text(L.chart.x, be.y + 28, t(lang, 'chart'), 't-label');
+  s += renderChart(energy, L.chart);
   energy.cops.forEach((row, i) => {
     const y = be.y + 54 + i * L.copCol.rowStep;
     s += text(L.copCol.xLabel, y, row.label, 't-row-l');
@@ -1198,21 +1230,21 @@ function renderEnergy(energy, lang) {
   return s;
 }
 
-function renderDynamic(vm, energy, lang) {
+// Everything around the pump. `at` says where: the wide card hangs it on the
+// anchors of the drawing, the narrow one puts it in a row above and below.
+function renderScene(vm, lang, at) {
   const L = LAYOUT;
-  const A = ANCHORS;
   // In cooling mode red and blue swap sides.
   const cold = vm.cooling ? HOT : COLD;
   const hot = vm.cooling ? COLD : HOT;
   let s = '';
 
-  if (vm.silent) s += silentBadge();
+  if (vm.silent) s += silentBadge(at.pump);
 
   // Compressor bars, centred above the pump, with the outside temperature on top.
   const C = L.compressor;
-  const labelY = A.top - C.labelGap;
-  const base = labelY - 18;
-  const x0 = L.ref.w / 2 - (COMPRESSOR_BARS * C.pitch - (C.pitch - C.barW)) / 2;
+  const base = at.compressorLabel - 18;
+  const x0 = at.cx - (COMPRESSOR_BARS * C.pitch - (C.pitch - C.barW)) / 2;
   for (let j = 0; j < COMPRESSOR_BARS; j++) {
     const h = C.hMin + j * C.hStep;
     const lit = j < vm.barsLit;
@@ -1220,16 +1252,16 @@ function renderDynamic(vm, energy, lang) {
       lit ? `fill="${barColor(j / (COMPRESSOR_BARS - 1))}"` : 'class="bar-off"'
     }/>`;
   }
-  s += value(400, labelY, vm.compressor, 't-label', 'middle', { prefix: t(lang, 'compressor') });
+  s += value(at.cx, at.compressorLabel, vm.compressor, 't-label', 'middle', { prefix: t(lang, 'compressor') });
   const barsTop = base - (C.hMin + (COMPRESSOR_BARS - 1) * C.hStep);
-  s += text(400, barsTop - L.outside.gapAboveBars - 30, t(lang, 'outside'), 't-label', 'middle');
-  s += value(400, barsTop - L.outside.gapAboveBars, vm.outdoor, 't-hero', 'middle');
+  s += text(at.cx, barsTop - L.outside.gapAboveBars - 30, t(lang, 'outside'), 't-label', 'middle');
+  s += value(at.cx, barsTop - L.outside.gapAboveBars, vm.outdoor, 't-hero', 'middle');
 
   // Electricity on the left and heat on the right: same height, same style.
   const st = L.stack;
-  const yb = Math.min(A.cableEnd[1], A.rightPipeEnd[1]) - st.gapAboveLine;
-  const xl = A.cableEnd[0];
-  const xr = A.rightPipeEnd[0];
+  const yb = at.stackBase;
+  const xl = at.left;
+  const xr = at.right;
   s += text(xl, yb + st.label, t(lang, 'electricity'), 't-label', 'start', { style: `fill:${ELEC}` });
   if (vm.elec.power) s += value(xl, yb + st.value, vm.elec.power, 't-value');
   s += value(xl, yb + st.sub1, vm.elec.voltage, 't-sub', 'start', { prefix: t(lang, 'voltage') });
@@ -1238,15 +1270,44 @@ function renderDynamic(vm, energy, lang) {
   s += value(xr, yb + st.value, vm.heat.power, 't-value', 'end');
   s += value(xr, yb + st.sub1, vm.heat.deltaT, 't-sub', 'end', { prefix: 'ΔT' });
 
+  // The water side: return on the left, supply on the right.
+  const [cx, cy, cs] = at.cold;
+  const [hx, hy, hs] = at.hot;
+  s += value(cx, cy + cs.v1, vm.cold.temp, 't-value', 'start', { style: `fill:${cold}` });
+  s += value(cx, cy + cs.v2, vm.cold.pressure, 't-sub', 'start', { prefix: t(lang, 'pressure') });
+  s += value(hx, hy + hs.v1, vm.hot.temp, 't-value', 'end', { style: `fill:${hot}` });
+  s += value(hx, hy + hs.v2, vm.hot.flow, 't-sub', 'end', { prefix: t(lang, 'flow') });
+  if (vm.hot.cop) s += value(hx, hy + hs.v3, vm.hot.cop, 't-sub', 'end', { prefix: t(lang, 'cop_now') });
+  return s;
+}
+
+const WIDE_SCENE = {
+  pump: WIDE_PUMP,
+  cx: LAYOUT.ref.w / 2,
+  compressorLabel: ANCHORS.top - LAYOUT.compressor.labelGap,
+  left: ANCHORS.cableEnd[0],
+  right: ANCHORS.rightPipeEnd[0],
+  stackBase: Math.min(ANCHORS.cableEnd[1], ANCHORS.rightPipeEnd[1]) - LAYOUT.stack.gapAboveLine,
   // Values below the pipes.
-  const bp = L.belowPipe;
-  const lp = A.leftPipeEnd;
-  const rp = A.rightPipeEnd;
-  s += value(lp[0], lp[1] + bp.v1, vm.cold.temp, 't-value', 'start', { style: `fill:${cold}` });
-  s += value(lp[0], lp[1] + bp.v2, vm.cold.pressure, 't-sub', 'start', { prefix: t(lang, 'pressure') });
-  s += value(rp[0], rp[1] + L.belowPipeRight.v1, vm.hot.temp, 't-value', 'end', { style: `fill:${hot}` });
-  s += value(rp[0], rp[1] + L.belowPipeRight.v2, vm.hot.flow, 't-sub', 'end', { prefix: t(lang, 'flow') });
-  if (vm.hot.cop) s += value(rp[0], rp[1] + L.belowPipeRight.v3, vm.hot.cop, 't-sub', 'end', { prefix: t(lang, 'cop_now') });
+  cold: [ANCHORS.leftPipeEnd[0], ANCHORS.leftPipeEnd[1], LAYOUT.belowPipe],
+  hot: [ANCHORS.rightPipeEnd[0], ANCHORS.rightPipeEnd[1], LAYOUT.belowPipeRight],
+};
+
+const NARROW_SCENE = {
+  pump: NARROW.pump,
+  cx: NARROW.w / 2,
+  compressorLabel: NARROW.pump.dy + NARROW.pump.k * ANCHORS.top - NARROW.compressorLabelGap,
+  left: NARROW.margin,
+  right: NARROW.w - NARROW.margin,
+  stackBase: NARROW.stackBase,
+  // At this size the values do not fit beside the pump: they go in a row below it.
+  cold: [NARROW.margin, NARROW.belowPump, LAYOUT.belowPipe],
+  hot: [NARROW.w - NARROW.margin, NARROW.belowPump, LAYOUT.belowPipe],
+};
+
+function renderWide(vm, energy, lang) {
+  const L = LAYOUT;
+  let s = renderScene(vm, lang, WIDE_SCENE);
 
   // Boxes: administrative information, not something on the pump itself.
   const bi = L.boxInfo;
@@ -1261,7 +1322,58 @@ function renderDynamic(vm, energy, lang) {
     }
   }
 
-  return s + renderEnergy(energy, lang);
+  return { svg: s + renderEnergy(energy, lang), height: L.ref.h };
+}
+
+function renderNarrow(vm, energy, lang) {
+  const L = LAYOUT;
+  const N = NARROW;
+  const frame = { x: N.margin, w: N.w - 2 * N.margin, r: 12 };
+  let s = renderScene(vm, lang, NARROW_SCENE);
+  let y = N.boxesTop;
+
+  // A box with a title and rows, as high as its rows.
+  const titled = (title, list) => {
+    const b = { ...frame, y, h: 54 + Math.max(0, list.length - 1) * L.rowStep + N.boxPad };
+    s += box(b) + text(b.x + 16, b.y + 28, title, 't-title') + rows(b, list);
+    y += b.h + N.boxGap;
+    return b;
+  };
+
+  titled(vm.title, vm.info);
+  if (vm.demand.length) {
+    const bd = titled(t(lang, 'demand_title'), vm.demand);
+    const flameRow = vm.demand.findIndex((row) => row.flame);
+    if (flameRow >= 0) {
+      s += flame(bd.x + bd.w - 16 - 44, bd.y + 54 + flameRow * L.rowStep - 5, vm.gasOn);
+    }
+  }
+
+  // Energy: the counters, then the chart, then the three COP figures side by side.
+  const be = { ...frame, y };
+  const x = be.x + 16;
+  let inner = text(x, be.y + 28, t(lang, 'energy'), 't-title') + rows(be, energy.rows);
+  let bottom = be.y + 54 + Math.max(0, energy.rows.length - 1) * L.rowStep;
+  if (energy.mode !== 'chart') {
+    inner += text(x, bottom + 26, t(lang, `${energy.mode}_1`), 't-row-l');
+    inner += text(x, bottom + 48, t(lang, `${energy.mode}_2`), 't-row-l');
+    bottom += 48;
+  } else {
+    const nc = N.chart;
+    const top = bottom + nc.labelGap + nc.top;
+    const ch = { ...nc, x: be.x + nc.inset, w: be.w - nc.inset - 16, top, bottom: top + nc.height };
+    inner += text(x, bottom + nc.labelGap, t(lang, 'chart'), 't-label') + renderChart(energy, ch);
+    const labelY = ch.bottom + N.cops.top;
+    energy.cops.forEach((row, i) => {
+      inner += text(x + i * N.cops.step, labelY, row.label, 't-row-l');
+      inner += value(x + i * N.cops.step, labelY + N.cops.valueGap, row.cell, 't-hero');
+    });
+    bottom = labelY + N.cops.valueGap;
+  }
+  be.h = bottom + N.boxPad - be.y;
+  s += box(be) + inner;
+
+  return { svg: s, height: be.y + be.h + N.margin };
 }
 
 function renderPump(quality, cooling) {
@@ -1306,7 +1418,7 @@ class RensonAreanCard extends HTMLElement {
   }
 
   getCardSize() {
-    return 8;
+    return this._narrow ? 16 : 8;
   }
 
   getGridOptions() {
@@ -1325,8 +1437,7 @@ class RensonAreanCard extends HTMLElement {
     }
     if (typeof ResizeObserver !== 'undefined') {
       this._resize = new ResizeObserver((entries) => {
-        const width = entries[entries.length - 1].contentRect.width;
-        if (width > 0) this._svg.style.setProperty('--wp-s', String(Math.max(1, width / LAYOUT.ref.w)));
+        this._setWidth(entries[entries.length - 1].contentRect.width);
       });
       this._resize.observe(this._svg);
     }
@@ -1340,6 +1451,18 @@ class RensonAreanCard extends HTMLElement {
     this._intersection = null;
     this._resize = null;
     this._syncAnimation();
+  }
+
+  // The width decides the layout, and how far the text is scaled back.
+  _setWidth(width) {
+    if (!(width > 0)) return;
+    const narrow = width < NARROW_BELOW;
+    const reference = narrow ? NARROW.w : LAYOUT.ref.w;
+    this._svg.style.setProperty('--wp-s', String(Math.max(1, width / reference)));
+    if (narrow !== this._narrow) {
+      this._narrow = narrow;
+      this._update();
+    }
   }
 
   _build() {
@@ -1359,6 +1482,13 @@ class RensonAreanCard extends HTMLElement {
     this._vm = vm;
     this._loadStats();
 
+    const narrow = Boolean(this._narrow);
+    if (narrow !== this._placedNarrow) {
+      this._placedNarrow = narrow;
+      const { k, dx, dy } = narrow ? NARROW.pump : WIDE_PUMP;
+      this._pumpLayer.setAttribute('transform', `translate(${dx},${dy}) scale(${k})`);
+    }
+
     // The drawing itself only changes with the quality and the cooling mode.
     const pumpSignature = `${this._config.quality}|${vm.cooling}`;
     if (pumpSignature !== this._pumpSignature) {
@@ -1376,11 +1506,13 @@ class RensonAreanCard extends HTMLElement {
     // Home Assistant hands over a new `hass` on every state change anywhere;
     // redraw only when something this card shows has changed.
     const energy = buildEnergyView(this._hass, this._config, this._stats, lang);
-    const signature = JSON.stringify([lang, vm, energy]);
+    const signature = JSON.stringify([lang, narrow, vm, energy]);
     if (signature !== this._signature) {
       this._signature = signature;
+      const drawn = (narrow ? renderNarrow : renderWide)(vm, energy, lang);
       this._svg.setAttribute('aria-label', t(lang, 'aria'));
-      this._dynamicLayer.innerHTML = renderDynamic(vm, energy, lang);
+      this._svg.setAttribute('viewBox', `0 0 ${narrow ? NARROW.w : LAYOUT.ref.w} ${Math.ceil(drawn.height)}`);
+      this._dynamicLayer.innerHTML = drawn.svg;
     }
     this._syncAnimation();
   }
