@@ -7,6 +7,7 @@ Renson One app (§1.1, P-08, E-01).
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
@@ -18,7 +19,6 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from homeassistant.loader import async_get_integration
 
 from .api.client import RensonAuthError, RensonClient, RensonError
 from .const import (
@@ -31,12 +31,14 @@ from .const import (
     CONF_PASSWORD,
     CONF_USERNAME,
     CONF_VERIFY_SSL,
+    CONF_VOLTAGE_OFFSET,
     DEFAULT_INTERVAL_CONFIG,
     DEFAULT_INTERVAL_STATE,
     DEFAULT_INTERVAL_THERMOSTAT,
     DEFAULT_INTERVAL_TOPOLOGY,
     DEFAULT_CONNECTED_TO,
     DEFAULT_VERIFY_SSL,
+    DEFAULT_VOLTAGE_OFFSET,
     DOMAIN,
     PLATFORMS,
 )
@@ -75,6 +77,9 @@ class RensonRuntime:
     entry_id: str
     host: str
     connected_to: str
+    # Added to the monobloc's mains voltage reading, in V (§5.8, D-18). Only
+    # the named sensor uses it; coordinator data stays as measured.
+    voltage_offset: float
     # The device tree of §4, built once from what the gateway reports.
     devices: DeviceSet
     # One confirmation window per OpenMotics thermostat (§6.2).
@@ -87,6 +92,11 @@ type RensonConfigEntry = ConfigEntry[RensonRuntime]
 def _interval(entry: ConfigEntry, key: str, default: timedelta) -> timedelta:
     seconds = entry.options.get(key)
     return timedelta(seconds=seconds) if seconds else default
+
+
+def _file_digest(path: Path) -> str:
+    """Return a short hash of the contents of a file."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -104,9 +114,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             )
         ]
     )
-    # The version in the URL makes the browser fetch the new card after an update.
-    integration = await async_get_integration(hass, DOMAIN)
-    add_extra_js_url(hass, f"{CARD_URL_BASE}/{CARD_FILENAME}?v={integration.version}")
+    # A hash of the file in the URL makes the browser fetch the card again
+    # whenever it has changed. The integration version is not enough: a browser
+    # that cached one build keeps it for every other build with that version.
+    card = Path(__file__).parent / "frontend" / CARD_FILENAME
+    digest = await hass.async_add_executor_job(_file_digest, card)
+    add_extra_js_url(hass, f"{CARD_URL_BASE}/{CARD_FILENAME}?v={digest}")
     return True
 
 
@@ -194,6 +207,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: RensonConfigEntry) -> bo
         entry_id=entry.entry_id,
         host=entry.data[CONF_HOST],
         connected_to=connected_to,
+        voltage_offset=entry.options.get(
+            CONF_VOLTAGE_OFFSET, DEFAULT_VOLTAGE_OFFSET
+        ),
         devices=devices,
         windows={},
     )

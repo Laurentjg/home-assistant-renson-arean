@@ -10,16 +10,20 @@ What each version means for you as a user.
 
 - **A dashboard card for your heat pump.** The integration now brings its own card: a drawn heat pump with the fan turning while it runs, water flowing through the pipes, ten bars for the compressor load, and the temperatures, flow rate, pressure, voltage and heat output right next to the part they belong to. Add it from the card picker by searching for *Renson*; it fills in its entities by itself. See [The dashboard card](../README.md#the-dashboard-card) in the README.
 - **COP at a glance, if you have your own meter.** Point the card at your meter's power and energy sensors and at the heat energy sensor from the README recipe, and it shows the live COP, the COP per day over the last 14 days, and the COP over 24 hours, 2 months and 12 months. Without a meter the card leaves those parts out and says so.
+- **You can correct the mains voltage reading.** The voltage sensor inside the monobloc can read a few volts off. If the real voltage at the unit has been measured, enter the difference under **Settings → Devices & Services → Renson Arean → Configure**, in the field `Voltage measurement offset`. The offset is added to the measurement: if the heat pump reports 232 V and 228 V was measured, enter −4. `Netspanning` (mains voltage) then shows the corrected value. Its attributes `raw_value` and `offset` show what the heat pump reported and which correction was applied. The range is −10 to +10 V in steps of 0.1. The default is 0, which changes nothing.
 
 ### What you need to change
 
-Nothing. The card comes with the integration; restart Home Assistant after updating. Your existing entities and dashboards are untouched.
+Nothing. The card comes with the integration; restart Home Assistant after updating. Your existing entities, entity ids, history and dashboards are untouched.
 
 ### One more thing to know
 
+- **Do not measure the mains voltage yourself.** Have the voltage at the monobloc measured only by a certified professional. There is a risk of electric shock, and the unit contains flammable refrigerant (R290, propane).
+- **The voltage correction exists only in Home Assistant.** Nothing is written to the heat pump, and the Renson apps keep showing the uncorrected value. The history shows a step: values recorded before you changed the offset are not recalculated.
 - **The card shows, it does not operate.** Changing the setpoint or the preset stays on your thermostat card.
 - **No gas boiler and no operating hours yet.** The card has a place for both, but the integration does not supply them; the rows stay hidden until you connect an entity of your own.
-- **Defrosting and hot water have no picture of their own yet**, and on a narrow screen the card shrinks as a whole rather than rearranging itself.
+- **The card has two shapes.** Wide, as one picture, in a full-width section or a panel view; stacked, with the boxes below the heat pump, in a normal section or on a phone. It picks the shape by itself, so the text stays readable.
+- **Defrosting and hot water have no picture of their own yet.**
 
 ---
 

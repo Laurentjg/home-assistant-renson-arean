@@ -41,6 +41,7 @@ from .const import (
     CONF_THERMOSTAT_SLAVE,
     CONF_USERNAME,
     CONF_VERIFY_SSL,
+    CONF_VOLTAGE_OFFSET,
     CONFIG_ENTRY_VERSION,
     CONNECTED_TO_BRAIN,
     CONNECTED_TO_HVAC,
@@ -51,11 +52,15 @@ from .const import (
     DEFAULT_INTERVAL_TOPOLOGY,
     DEFAULT_THERMOSTAT_SLAVE,
     DEFAULT_VERIFY_SSL,
+    DEFAULT_VOLTAGE_OFFSET,
     DOMAIN,
+    MAX_VOLTAGE_OFFSET,
     MIN_INTERVAL_CONFIG,
     MIN_INTERVAL_STATE,
     MIN_INTERVAL_THERMOSTAT,
     MIN_INTERVAL_TOPOLOGY,
+    MIN_VOLTAGE_OFFSET,
+    VOLTAGE_OFFSET_STEP,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -165,10 +170,14 @@ class RensonConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class RensonOptionsFlow(OptionsFlow):
-    """Connection settings and the per-source intervals of §6.2.
+    """Connection settings, the per-source intervals of §6.2 and one calibration.
 
     These are settings of the integration, not of a device, so they live here
     and not as `number` or `select` entities (P-03).
+
+    The voltage offset is the exception: it calibrates the monobloc's sensor.
+    It lives here anyway, because a `number` entity on a read-only device would
+    suggest the value is written to the heat pump (D-06, D-18).
     """
 
     async def async_step_init(
@@ -178,6 +187,9 @@ class RensonOptionsFlow(OptionsFlow):
         if user_input is not None:
             # The number selector hands back a float; the address is an int.
             user_input[CONF_THERMOSTAT_SLAVE] = int(user_input[CONF_THERMOSTAT_SLAVE])
+            user_input[CONF_VOLTAGE_OFFSET] = round(
+                user_input[CONF_VOLTAGE_OFFSET], 1
+            )
             return self.async_create_entry(data=user_input)
 
         options = self.config_entry.options
@@ -233,6 +245,18 @@ class RensonOptionsFlow(OptionsFlow):
                         int(DEFAULT_INTERVAL_TOPOLOGY.total_seconds()),
                     ),
                 ): vol.All(int, vol.Range(min=MIN_INTERVAL_TOPOLOGY)),
+                vol.Optional(
+                    CONF_VOLTAGE_OFFSET,
+                    default=options.get(CONF_VOLTAGE_OFFSET, DEFAULT_VOLTAGE_OFFSET),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=MIN_VOLTAGE_OFFSET,
+                        max=MAX_VOLTAGE_OFFSET,
+                        step=VOLTAGE_OFFSET_STEP,
+                        mode=NumberSelectorMode.BOX,
+                        unit_of_measurement="V",
+                    )
+                ),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

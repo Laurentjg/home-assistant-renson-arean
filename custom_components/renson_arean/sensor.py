@@ -149,13 +149,36 @@ def _ssr_sensor(
     array_key: str,
     position: SsrPosition,
     requires_heatpump: bool = False,
+    offset: float | None = None,
 ) -> RensonSensor:
     """A named sensor fed by one SSR position.
 
     `requires_heatpump` makes the value disappear together with
     `hardware:heatpump`, so a monobloc outage shows as one recognisable event
     across the whole device rather than position by position (§5.0).
+
+    `offset` is a fixed correction added to the measured value (D-18). The
+    state is then the corrected value, and the attributes carry `raw_value` and
+    `offset` so the correction stays visible (§4.4). None means the position
+    has no correction at all; the raw `waarde N` sensor is never corrected.
     """
+
+    def measured(data: Any) -> Any:
+        if requires_heatpump and not data.heatpump_reachable:
+            return None
+        return data.ssr.value(array_key, position.index)
+
+    def corrected(data: Any) -> Any:
+        value = measured(data)
+        # A non-number means the log format changed; pass it through untouched.
+        if (
+            not offset
+            or isinstance(value, bool)
+            or not isinstance(value, (int, float))
+        ):
+            return value
+        return round(value + offset, 1)
+
     return RensonSensor(
         runtime.state,
         device,
@@ -163,9 +186,7 @@ def _ssr_sensor(
         position.key,
         position.name,
         source_app_log(APP_LOGIC),
-        lambda data, k=array_key, i=position.index, r=requires_heatpump: (
-            data.ssr.value(k, i) if data.heatpump_reachable or not r else None
-        ),
+        corrected,
         endpoint="get_plugin_logs",
         device_class=(
             SensorDeviceClass(position.device_class) if position.device_class else None
@@ -175,7 +196,7 @@ def _ssr_sensor(
             SensorStateClass(position.state_class) if position.state_class else None
         ),
         entity_category=DIAGNOSTIC if position.diagnostic else None,
-        attributes_fn=lambda _data, p=position, k=array_key: {
+        attributes_fn=lambda data, p=position, k=array_key: {
             "function_confidence": p.confidence,
             "array": k,
             "position": p.index + 1,
@@ -183,6 +204,11 @@ def _ssr_sensor(
                 "te controleren, zie non-public/design/open-issues.md"
                 if p.confidence == CONFIDENCE_ASSUMED
                 else None
+            ),
+            **(
+                {"raw_value": measured(data), "offset": offset}
+                if offset is not None
+                else {}
             ),
         },
     )
@@ -592,6 +618,11 @@ async def async_setup_entry(
                         array_key,
                         position,
                         requires_heatpump=True,
+                        offset=(
+                            runtime.voltage_offset
+                            if position.key == "mains_voltage"
+                            else None
+                        ),
                     )
                 )
         entities.append(
