@@ -56,6 +56,7 @@ quality: detailed                 # optional; "sketch" is a lighter drawing
 entities:
   status: sensor.heatpump_operating_state
   silent_mode: binary_sensor.app_rensonheatpumplogic_silent_mode
+  serial: sensor.heatpump_warranty_number
   outdoor_temp: sensor.heatpump_outside_temperature
   compressor_hz: sensor.heatpump_compressor_frequency
   fan_running: sensor.heatpump_operating_state
@@ -64,15 +65,16 @@ entities:
   hot_temp: sensor.heatpump_flow_temperature
   pressure: sensor.hvac_module_in1_pressure
   flow: sensor.heatpump_flow
+  heat_power: sensor.calculated_heat_output
+  heat_energy: sensor.calculated_heat_energy
   voltage: sensor.heatpump_mains_voltage
   current: sensor.heatpump_current
   room_temp: climate.thermostat_0
   setpoint: climate.thermostat_0
   heat_demand: climate.thermostat_0
-  # Optional, from your own meter and helpers:
+  # Optional, from your own meter:
   power: sensor.heat_pump_power
   elec_energy: sensor.heat_pump_energy
-  heat_energy: sensor.heat_pump_heat_energy
 ```
 
 Every role is an entity id, or `{entity: ..., attribute: ...}` to read an attribute. The card
@@ -90,7 +92,7 @@ and each one can be changed.
 | `cooling_mode` | Red and blue swap sides, "heat" becomes "cooling" | follows `status` |
 | `cold_temp`, `hot_temp` | Below the left and right pipe | a dash |
 | `pressure`, `flow` | Below the pipes; m³/h is shown with three decimals | a dash |
-| `heat_power` | Heat output | computed: flow × 1.163 × ΔT (plain water) |
+| `heat_power` | Heat output; while cooling its size, without the sign | computed in the card: flow × 1.163 × ΔT (plain water) |
 | `voltage`, `current` | Below "electricity" | a dash |
 | `room_temp`, `setpoint`, `heat_demand`, `gas_boiler` | The heat demand box | row hidden |
 | `power` | Electrical power | hidden, together with the live COP |
@@ -101,15 +103,16 @@ A climate entity can fill `room_temp`, `setpoint` and `heat_demand` at once: the
 matching attribute. A value that is temporarily unavailable shows as a grey dash, never as zero.
 Tapping a value opens its entity.
 
-### The heat energy counter
+### Heat output and the heat energy counter
 
-The integration supplies flow and temperatures, not an energy counter. Make one with a template
-sensor and an integration helper, as described under "Building a COP sensor yourself" in the
-[README](../README.md), steps 1 and 3, and point `heat_energy` at the result
-(`sensor.heat_pump_heat_energy` in that recipe). `elec_energy` is the kWh counter of your own meter.
+The integration supplies both: `sensor.calculated_heat_output` and `sensor.calculated_heat_energy`. A
+new card is pre-filled with them. They are calculated with the factor for what the heating circuit
+is filled with, water or water with glycol, as set in the integration's options. A card without
+`heat_power` calculates the heat output itself, for plain water. `elec_energy` is the kWh counter
+of your own meter.
 
-The COP figures need long-term statistics, so both counters must have a `state_class`. The helpers
-from the recipe have one. COP per day and the rolling COP over 24 hours, 2 months and 12 months are
+The COP figures need long-term statistics, so both counters must have a `state_class`. The
+integration's heat energy counter has one. COP per day and the rolling COP over 24 hours, 2 months and 12 months are
 always total heat ÷ total electricity over the period, never a mean of separate COP values. They
 refresh every five minutes.
 

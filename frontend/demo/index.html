@@ -83,7 +83,7 @@ function states() {
     'climate.thermostat_0': { state: cooling ? 'cool' : 'heat',
       attributes: { current_temperature: 20.4, temperature: 20.5, hvac_action: running ? (cooling ? 'cooling' : 'heating') : 'idle' } },
     'binary_sensor.gas_boiler': sensor(S.gas ? 'on' : 'off'),
-    'sensor.heat_pump_heat_energy': sensor(4321.5, 'kWh'),
+    'sensor.calculated_heat_energy': sensor(4321.5, 'kWh'),
   };
   if (S.power !== 'none') {
     const ok = S.power === 'ok';
@@ -113,7 +113,7 @@ function config() {
     heat_demand: 'climate.thermostat_0',
     gas_boiler: 'binary_sensor.gas_boiler',
   };
-  if (S.heat !== 'none') entities.heat_energy = 'sensor.heat_pump_heat_energy';
+  if (S.heat !== 'none') entities.heat_energy = 'sensor.calculated_heat_energy';
   if (S.power !== 'none') { entities.power = 'sensor.heat_pump_power'; entities.elec_energy = 'sensor.heat_pump_energy'; }
   return { type: 'custom:renson-arean-card', quality: S.quality, entities };
 }
@@ -124,7 +124,7 @@ function callWS(message) {
   const now = Date.now();
   const result = {};
   for (const id of message.statistic_ids) {
-    const heat = id === 'sensor.heat_pump_heat_energy';
+    const heat = id === 'sensor.calculated_heat_energy';
     const buckets = [];
     if (message.period === 'day') {
       const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);

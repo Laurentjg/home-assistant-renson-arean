@@ -41,15 +41,23 @@
           "interval_state": "Outputs and app log, seconds",
           "interval_config": "App configuration, seconds",
           "interval_topology": "Modules, apps and versions, seconds",
-          "voltage_offset": "Voltage measurement offset, volts"
+          "voltage_offset": "Voltage measurement offset, volts",
+          "heat_medium": "The heating circuit is filled with"
         },
         "data_description": {
-          "voltage_offset": "The voltage sensor in the Renson Arean R290 monobloc may deviate from the real mains voltage. Enter a fixed correction here; it is added to the measured value (negative if the monobloc reads too high). Warning: have the voltage at the monobloc measured only by a certified professional: risk of electric shock, and the unit contains flammable refrigerant (R290, propane)."
+          "voltage_offset": "The voltage sensor in the Renson Arean R290 monobloc may deviate from the real mains voltage. Enter a fixed correction here; it is added to the measured value (negative if the monobloc reads too high). Warning: have the voltage at the monobloc measured only by a certified professional: risk of electric shock, and the unit contains flammable refrigerant (R290, propane).",
+          "heat_medium": "Decides how the heat output and the heat energy are calculated from the flow rate and the temperature difference. Water with glycol (antifreeze) carries about 7 % less heat than plain water. Ask your installer if you do not know what the circuit holds."
         }
       }
     }
   },
   "selector": {
+    "heat_medium": {
+      "options": {
+        "water": "Water",
+        "glycol": "Water with glycol (antifreeze)"
+      }
+    },
     "thermostat_connected_to": {
       "options": {
         "brain": "Brain module",

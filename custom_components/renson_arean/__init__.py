@@ -27,6 +27,7 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .api.client import RensonAuthError, RensonClient, RensonError
 from .const import (
+    CONF_HEAT_MEDIUM,
     CONF_HOST,
     CONF_THERMOSTAT_CONNECTED_TO,
     CONF_INTERVAL_CONFIG,
@@ -42,9 +43,11 @@ from .const import (
     DEFAULT_INTERVAL_THERMOSTAT,
     DEFAULT_INTERVAL_TOPOLOGY,
     DEFAULT_CONNECTED_TO,
+    DEFAULT_HEAT_MEDIUM,
     DEFAULT_VERIFY_SSL,
     DEFAULT_VOLTAGE_OFFSET,
     DOMAIN,
+    HEAT_FACTORS,
     PLATFORMS,
 )
 from .coordinators.config import ConfigCoordinator
@@ -88,6 +91,9 @@ class RensonRuntime:
     # Added to the monobloc's mains voltage reading, in V (§5.8, D-18). Only
     # the named sensor uses it; coordinator data stays as measured.
     voltage_offset: float
+    # What the heating circuit is filled with; decides the factor behind the
+    # heat output and the heat energy (const.HEAT_FACTORS).
+    heat_medium: str
     # The device tree of §4, built once from what the gateway reports.
     devices: DeviceSet
     # One confirmation window per OpenMotics thermostat (§6.2).
@@ -220,6 +226,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: RensonConfigEntry) -> bo
         if config.data and config.data.thermostat_app
         else {}
     )
+    heat_medium = entry.options.get(CONF_HEAT_MEDIUM, DEFAULT_HEAT_MEDIUM)
+    if heat_medium not in HEAT_FACTORS:
+        heat_medium = DEFAULT_HEAT_MEDIUM
     devices = build_devices(
         entry.entry_id,
         entry.data[CONF_HOST],
@@ -242,6 +251,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: RensonConfigEntry) -> bo
         voltage_offset=entry.options.get(
             CONF_VOLTAGE_OFFSET, DEFAULT_VOLTAGE_OFFSET
         ),
+        heat_medium=heat_medium,
         devices=devices,
         windows={},
     )

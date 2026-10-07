@@ -128,6 +128,35 @@ test('suggestions only name entities that exist', () => {
   assert.equal(found.fan_running, 'sensor.heatpump_operating_state');
   assert.equal(found.setpoint, 'climate.thermostat_0');
   assert.equal(found.flow, undefined);
+  assert.equal(found.heat_power, undefined);
+
+  // What the integration derives and what it reads from the app are pre-filled too.
+  const own = suggestEntities(
+    hass({
+      'sensor.calculated_heat_output': state(4.9, 'kW'),
+      'sensor.calculated_heat_energy': state(1234.5, 'kWh'),
+      'sensor.heatpump_warranty_number': state('RS-1'),
+    })
+  );
+  assert.equal(own.heat_power, 'sensor.calculated_heat_output');
+  assert.equal(own.heat_energy, 'sensor.calculated_heat_energy');
+  assert.equal(own.serial, 'sensor.heatpump_warranty_number');
+});
+
+test('a heat output entity replaces the calculation', () => {
+  const own = { ...ENTITIES, heat_power: 'sensor.heat' };
+  // Not 8.4 kW from flow × ΔT: the entity knows what the circuit is filled with.
+  assert.equal(view(own, { 'sensor.heat': state(7.77, 'kW') }).heat.power.text, '7,8 kW');
+  assert.equal(view(own, { 'sensor.heat': state(7770, 'W') }).heat.power.text, '7,8 kW');
+  assert.equal(view(own, { 'sensor.heat': state('unavailable') }).heat.power.na, true);
+  // A defrost takes heat out of the system, and that stays visible.
+  assert.equal(view(own, { 'sensor.heat': state(-2.5, 'kW') }).heat.power.text, '-2,5 kW');
+  // While cooling the sign says nothing new: the label already reads "cooling".
+  const cooling = view(own, {
+    'sensor.heatpump_operating_state': state('COOLING'),
+    'sensor.heat': state(-3.2, 'kW'),
+  });
+  assert.equal(cooling.heat.power.text, '3,2 kW');
 });
 
 test('states are read as running or not', () => {

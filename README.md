@@ -18,6 +18,7 @@ A fully local Home Assistant custom integration for the **Renson Arean heat pump
 | Status of the HVAC module's valves and pumps | ✅ | ✅ |
 | System pressure and system water temperature | ✅ | ✅ |
 | Heat pump flow, return, compressor frequency, operating state and reachability | ✅ | ✅ |
+| Heat output and a heat energy counter, calculated from flow rate and temperature difference | ✅ | ✅ |
 | Silent mode, backup heater, control parameters | read-only | read-only |
 | Module and app versions, firmware updates available | ✅ | ✅ |
 | A dashboard card that draws the heat pump with its live values | ✅ | ✅ |
@@ -39,6 +40,7 @@ Brain module                        the controller: firmware, system bus, update
 │   └── (raw log values)
 └── Brain-App RensonHeatPumpR290    the Modbus driver
     └── Renson Arean R290           the heat pump itself
+        └── Berekende waarden       what the integration calculates from the heat pump's readings
 ```
 
 ### Thermostaat — your main card
@@ -84,7 +86,22 @@ Each app on the Brain is its own device, named exactly as OpenMotics names it, w
 
 Flow and return temperature, flow rate, flow temperature setpoint, compressor frequency, operating state, domestic hot water temperature, mains voltage, current drawn and the outside temperature the control logic is working with. Two on/off indicators show whether the compressor is *requested* (this comes on about two minutes before it actually runs) and whether the pump inside the monobloc is running.
 
+The **warranty number** (Garantienummer) of the heat pump, as stored in the control logic, is a diagnostic sensor.
+
 **Heat pump reachable** follows the heat pump itself, not the app that reads it. If the heat pump loses power or its bus link while the Brain keeps running, this entity turns off within three minutes, all heat pump values go unavailable together, and one warning is logged — with one recovery line, including the outage duration, when it comes back.
+
+### Berekende waarden — what the integration calculates
+
+Every other device shows what the installation reports. **Heat output and heat energy** are not reported by anything: the integration calculates them from the heat pump's readings. They therefore have a device of their own, *Berekende waarden* (calculated values), so the heat pump device only holds what the heat pump says itself:
+
+| Entity | Name | What it is |
+|---|---|---|
+| `sensor.calculated_heat_output` | Warmtevermogen | the heat given to the water right now, in kW: flow rate × factor × (flow temperature − return temperature) |
+| `sensor.calculated_heat_energy` | Warmte-energie | that heat output added up over time, in kWh. A counter: it keeps its total across restarts |
+
+The factor depends on what the heating circuit is filled with: 1.163 kWh/(m³·K) for plain water, 1.08 for water with glycol. Choose it under [Options](#options); the default is water. Both values can be negative or go down for a while: during a defrost, and while cooling, the heat pump takes heat *out* of the water. What the heat pump did while Home Assistant was not running is not counted.
+
+When the heat pump is unreachable, the heat output is unavailable with it, and the counter waits.
 
 ---
 
@@ -95,8 +112,8 @@ The integration brings its own dashboard card: a drawn heat pump with the values
 **What it shows**
 
 - **On the pump:** the fan turns while the heat pump runs, the water flows through the pipes while the pump circulates, and ten bars show how hard the compressor works. In silent mode a moon appears over the fan and it turns slower. In cooling mode red and blue swap sides.
-- **Around the pump:** outside temperature, flow and return temperature, flow rate, system pressure, mains voltage and current, and the heat output — calculated from flow rate × temperature difference.
-- **In the boxes:** operating state and silent mode; what your thermostat measures, wants and asks for; and an energy overview with the COP per day over the last 14 days and the COP over 24 hours, 2 months and 12 months.
+- **Around the pump:** outside temperature, flow and return temperature, flow rate, system pressure, mains voltage and current, and the heat output.
+- **In the boxes:** operating state, silent mode and the warranty number; what your thermostat measures, wants and asks for; and an energy overview with the COP per day over the last 14 days and the COP over 24 hours, 2 months and 12 months.
 
 The card only shows; it does not change settings. Tap a value to open its entity. It follows your Home Assistant theme, light or dark, and writes numbers the way your profile says. Its texts are in Dutch or English, following your language.
 
@@ -110,16 +127,17 @@ If the card does not appear in the list after an update, or shows a configuratio
 
 **Electricity and COP need your own meter**
 
-The integration measures no electrical power (see [Long-term statistics](#long-term-statistics)), so the card has optional places for your own sensors:
+The integration supplies the heat side: the card fills in the heat output and the heat energy counter by itself. It measures no electrical power (see [Long-term statistics](#long-term-statistics)), so the card has optional places for your own sensors:
 
 | In the editor | What to choose | What you get |
 |---|---|---|
 | Electrical power | your meter's power sensor | power next to "electricity", and the live COP |
 | Electrical energy counter | your meter's kWh sensor | electricity today, and all COP figures |
-| Heat energy counter | the heat energy sensor you build in [step 3](#step-3--cop-per-day) below (`sensor.heat_pump_heat_energy`) | heat today, and all COP figures |
 | Gas boiler active | an entity of your own that knows whether the boiler burns | the flame in the heat demand box |
 
-Without them the card still works: what cannot be shown is left out, with a short note in the energy box saying which sensor is missing. A value that is temporarily unavailable shows as a grey dash, never as zero. The COP figures come from Home Assistant's long-term statistics and are always total heat ÷ total electricity over the period.
+If you clear the heat output entity in the editor, the card calculates the heat output itself, for plain water.
+
+Without your own sensors the card still works: what cannot be shown is left out, with a short note in the energy box saying which sensor is missing. A value that is temporarily unavailable shows as a grey dash, never as zero. The COP figures come from Home Assistant's long-term statistics and are always total heat ÷ total electricity over the period.
 
 The full list of settings is in [`frontend/README.md`](frontend/README.md).
 
@@ -145,125 +163,47 @@ Home Assistant keeps long-term statistics forever, even after the regular histor
 - heat pump flow and return temperature
 - compressor frequency
 - system pressure
+- heat energy, as a counter
 
-Settings, voltages and diagnostic values get none. The integration computes **no COP and no electrical consumption** itself: the heat pump only reports voltage and current, from which no reliable consumption follows. A dedicated energy meter does that better — and with one, you can build the COP yourself, see below.
+Settings, voltages and diagnostic values get none. Neither does the heat output: the heat energy counter holds the same information, and the heat delivered over any hour, day or month follows from it. The integration computes **no COP and no electrical consumption** itself: the heat pump only reports voltage and current, from which no reliable consumption follows. A dedicated energy meter does that better — and with one, you can calculate the COP yourself, see below.
 
 ---
 
-## Building a COP sensor yourself
+## Calculating the COP yourself
 
-The COP (coefficient of performance) is the heat delivered divided by the electricity used. The integration supplies the heat side; the electricity side has to come from **your own energy meter** on the heat pump's supply (a smart plug is not suitable — use a DIN-rail meter or a sub-meter).
+The COP (coefficient of performance) is the heat delivered divided by the electricity used. The integration supplies the heat side, as `sensor.calculated_heat_energy`. The electricity side has to come from **your own energy meter** on the heat pump's supply (a smart plug is not suitable — use a DIN-rail meter or a sub-meter), as a counter in kWh.
 
-### Live or per day?
+The dashboard card does this calculation for you once you point it at your meter. To do it by hand, read both counters at two moments and divide the differences:
 
-Both can be built, and they answer different questions:
-
-| | Live COP | COP per day |
-|---|---|---|
-| What it is | heat output ÷ electrical power, right now | heat energy ÷ electrical energy over a whole day |
-| Use it for | watching a cycle: how does the COP react to the flow temperature, to modulation, to a defrost? | judging the installation, and comparing days, weeks, seasons |
-| How to read it | as a **trend**. Single values jump around; do not draw conclusions from one number | as **the** figure. This is what "my heat pump has a COP of 4" means |
-
-The live value is noisy by nature, for reasons that have nothing to do with the heat pump:
-
-- **Timing.** The heat pump values are logged only when they change and read every 30 seconds; your meter updates on its own schedule. For a moment, the heat output and the power drawn belong to slightly different instants.
-- **Small temperature difference.** Flow and return usually differ by only 2–4 K. A sensor tolerance of 0.2 K is already 5–10 % of the heat output.
-- **Start-up, defrost and overrun.** At start-up the power is there before the heat is. During a defrost the heat pump takes heat *out* of the system, so the heat output — and the COP — briefly turn negative. After switching off, the pump keeps running for a few minutes with hardly any temperature difference.
-
-A day averages all of that out, and includes the standby consumption and the defrosts the heat pump really costs you. Therefore: **judge by the daily COP, watch the live COP for understanding.**
-
-> Never average COP values. A day's COP is *total heat ÷ total electricity*, not the mean of the live values — one minute at COP 8 with the compressor barely running would otherwise weigh as much as an hour of full load.
-
-### Step 1 — heat output
-
-Heat output (kW) = flow (m³/h) × 1.163 × (flow temperature − return temperature). The factor 1.163 kWh/(m³·K) holds for **plain water**. If your primary circuit contains glycol, the factor is lower (roughly 1.0–1.1 depending on concentration) — check with your installer.
-
-Add to `configuration.yaml` (or create the same via **Settings → Devices & Services → Helpers → Template**):
-
-```yaml
-template:
-  - sensor:
-      - name: "Heat pump heat output"
-        unique_id: heat_pump_heat_output
-        unit_of_measurement: "kW"
-        device_class: power
-        state_class: measurement
-        state: >
-          {% set flow = states('sensor.heatpump_flow') | float(0) %}
-          {% set supply = states('sensor.heatpump_flow_temperature') | float(0) %}
-          {% set ret = states('sensor.heatpump_return_temperature') | float(0) %}
-          {{ (flow * 1.163 * (supply - ret)) | round(2) }}
-        availability: >
-          {{ has_value('sensor.heatpump_flow')
-             and has_value('sensor.heatpump_flow_temperature')
-             and has_value('sensor.heatpump_return_temperature') }}
+```
+COP = (heat energy at the end − heat energy at the start)
+      ÷ (electrical energy at the end − electrical energy at the start)
 ```
 
-### Step 2 — live COP
+For example, over one day:
 
-Replace `sensor.heat_pump_power` with your own meter's power sensor (in W). The COP is only shown while the compressor runs; the rest of the time it is `unavailable`, which is more honest than 0 or a division by almost nothing.
+| | Midnight | Next midnight | Difference |
+|---|---|---|---|
+| Heat energy (`sensor.calculated_heat_energy`) | 1 250.4 kWh | 1 275.2 kWh | 24.8 kWh |
+| Electrical energy (your meter) | 3 410.7 kWh | 3 416.9 kWh | 6.2 kWh |
 
-```yaml
-template:
-  - sensor:
-      - name: "Heat pump COP live"
-        unique_id: heat_pump_cop_live
-        state_class: measurement
-        state: >
-          {{ (states('sensor.heat_pump_heat_output') | float(0)
-              / (states('sensor.heat_pump_power') | float(0) / 1000)) | round(1) }}
-        availability: >
-          {{ states('sensor.heatpump_compressor_frequency') | float(0) > 0
-             and states('sensor.heat_pump_power') | float(0) > 200 }}
-```
+COP = 24.8 ÷ 6.2 = 4.0.
 
-### Step 3 — COP per day
+You find the readings in the history of each sensor: open the entity, pick the two moments in the graph and read the values. Home Assistant keeps these counters in its long-term statistics, so the same works for moments months apart. A statistic card or statistics graph card with the type *change* gives the difference over a period directly.
 
-First turn heat output into heat energy, then count both energies per day:
+**Choosing the two moments**
 
-```yaml
-sensor:
-  - platform: integration
-    name: "Heat pump heat energy"
-    unique_id: heat_pump_heat_energy
-    source: sensor.heat_pump_heat_output
-    method: left
-    round: 3
-    # The heat pump values are only logged when they change: keep integrating
-    # while the value holds steady.
-    max_sub_interval:
-      minutes: 5
-
-utility_meter:
-  heat_pump_heat_energy_daily:
-    unique_id: heat_pump_heat_energy_daily
-    source: sensor.heat_pump_heat_energy
-    cycle: daily
-    # A defrost makes the counter go down briefly; that is not a meter reset.
-    net_consumption: true
-  heat_pump_electric_energy_daily:
-    unique_id: heat_pump_electric_energy_daily
-    source: sensor.heat_pump_energy  # your meter's energy sensor, in kWh
-    cycle: daily
-
-template:
-  - sensor:
-      - name: "Heat pump COP today"
-        unique_id: heat_pump_cop_today
-        state: >
-          {{ (states('sensor.heat_pump_heat_energy_daily') | float(0)
-              / states('sensor.heat_pump_electric_energy_daily') | float(0)) | round(2) }}
-        availability: >
-          {{ states('sensor.heat_pump_electric_energy_daily') | float(0) > 0.2 }}
-```
-
-`Heat pump COP today` builds up during the day; the value just before midnight is that day's COP. Early in the morning, with little consumed yet, it can still swing — hence the 0.2 kWh threshold. For a week, month or season, do the same division on the long-term statistics of the two energy sensors (for example with two statistic cards), not on the daily COPs.
+- **Take both readings at the same two moments.** The heat counter and your meter must cover exactly the same period.
+- **Take at least a day.** Over a short period the result swings: at start-up the power is there before the heat is, a defrost takes heat *out* of the system, and flow and return often differ by only 2–4 K, so a sensor tolerance of 0.2 K is already 5–10 % of the heat output. A day averages that out, and includes the standby consumption and the defrosts the heat pump really costs you.
+- **Never average COP values.** The COP over a week is *total heat ÷ total electricity* over that week, not the mean of seven daily COPs — a mild day with little consumption would otherwise weigh as much as a cold one.
 
 ### How reliable is it?
 
 - **The flow rate and the flow/return assignment are well-supported inferences**, not values Renson names (`function_confidence: assumed`). The strongest evidence for them is precisely this calculation: on a measured cycle it came out at a COP of 3.6–5.8 at 15 °C outside and 40 °C flow, which is what an R290 monobloc should achieve. If you see structurally impossible values (below 1 or above 8 over a whole day), report it.
+- **The factor for glycol is an approximation.** 1.08 kWh/(m³·K) is for water with about 30 % glycol. The real value depends on the kind of glycol and the concentration and can differ by a few percent; the COP differs by the same percentage.
+- **The heat counter only counts while Home Assistant runs.** After a restart or a connection outage, the heat delivered in the meantime is missing, while your meter kept counting. A period that contains such a gap gives a COP that is too low.
 - **Domestic hot water** is included in the heat output as long as it is heated through the same circuit.
-- **Do not use mains voltage × current as a substitute for a meter.** That is apparent power: without the power factor it overestimates the consumption, so the COP comes out systematically too low — and in a daily total that error accumulates.
+- **Do not use mains voltage × current as a substitute for a meter.** That is apparent power: without the power factor it overestimates the consumption, so the COP comes out systematically too low — and in a total that error accumulates.
 
 ---
 
@@ -346,6 +286,7 @@ The gateway reports no serial number, so the integration cannot tell two identic
 | App configuration interval | 5 min | These are settings, not measurements. |
 | Modules, apps and versions | 15 min | Rarely changes. |
 | Voltage measurement offset | 0 V | Added to the heat pump's mains voltage reading, from −10 to +10 V. Only a certified professional should measure the real voltage at the monobloc. |
+| The heating circuit is filled with | Water | Water, or water with glycol (antifreeze). Decides the factor behind the heat output and the heat energy: 1.163 for water, 1.08 for glycol. Changing it does not recalculate what was already counted. |
 
 ---
 
