@@ -26,6 +26,7 @@ custom_components/renson_arean/frontend/
 | `format.js` | Numbers in the user's locale |
 | `i18n.js` | The card's own texts, Dutch and English |
 | `editor.js` | The visual editor |
+| `version.js` | The build id, and the message to refresh when the browser runs another build |
 | `card.js` | The element itself: layout, rendering, animation |
 
 ## Working on the card
@@ -132,6 +133,21 @@ design (below 400 px stacked, 640 to 800 px wide) is scaled down as a whole.
 `async_setup` in `__init__.py` serves this folder at `/renson_arean` and adds the card to the
 frontend with a hash of the file in the URL, so a browser fetches every new build instead of
 reusing a cached one.
+
+### Telling the user to refresh
+
+Home Assistant's service worker shows a page from its store and fetches the new one in the
+background, so after an update a browser can run the previous card once more, or for as long as a
+tab stays open. The build writes a build id into the card: a hash of the built file (`CARD_BUILD`
+in `version.js`; straight from `src/` it is a placeholder and nothing is checked). The integration
+reads that id from the file at startup and answers the websocket command
+`renson_arean/card_build` with it. The card asks once per connection and again whenever the
+connection comes back. If the id differs from its own it shows Home Assistant's toast with a
+**Refresh** action, which drops this page from the service worker's store and reloads. An
+integration without the command is ignored, so the card also works on its own.
+
+This cannot help when the page does not load the card at all ("Custom element doesn't exist"):
+then no card code runs.
 
 ### Colours
 

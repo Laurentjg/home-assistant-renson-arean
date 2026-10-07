@@ -20,6 +20,7 @@ import {
 } from '../src/model.js';
 import { WP } from '../src/pump.js';
 import { changeNear, localMidnight, ratio, sumChange, summarize } from '../src/stats.js';
+import { CARD_BUILD, isOutdated, watchBuild } from '../src/version.js';
 
 const NL = { language: 'nl', number_format: 'language' };
 const state = (value, unit, attributes = {}) => ({
@@ -355,6 +356,59 @@ test('the energy box has three states per counter', () => {
   );
   assert.equal(loading.rows[0].cell.na, true);
   assert.equal(loading.days.length, 0);
+});
+
+test('only another build of the card counts as outdated', () => {
+  assert.equal(isOutdated('aaaaaaaaaaaa', 'bbbbbbbbbbbb'), true);
+  assert.equal(isOutdated('aaaaaaaaaaaa', 'aaaaaaaaaaaa'), false);
+  // An integration that does not know its build, and a card straight from src/.
+  assert.equal(isOutdated('aaaaaaaaaaaa', null), false);
+  assert.equal(isOutdated('aaaaaaaaaaaa', undefined), false);
+  assert.equal(isOutdated(CARD_BUILD, 'bbbbbbbbbbbb'), false);
+});
+
+test('the build is asked again when the connection comes back', async () => {
+  const settle = () => new Promise((done) => setImmediate(done));
+  const listeners = {};
+  let served = 'aaaaaaaaaaaa';
+  const connection = {
+    sendMessagePromise: async (message) => {
+      assert.deepEqual(message, { type: 'renson_arean/card_build' });
+      if (served === null) throw new Error('unknown command');
+      return { build: served };
+    },
+    addEventListener: (name, listener) => {
+      listeners[name] = listener;
+    },
+  };
+  let outdated = 0;
+  watchBuild(connection, 'aaaaaaaaaaaa', () => outdated++);
+  await settle();
+  assert.equal(outdated, 0);
+
+  // An integration without the command is not a reason to complain.
+  served = null;
+  listeners.ready();
+  await settle();
+  assert.equal(outdated, 0);
+
+  // Home Assistant restarted with an update.
+  served = 'bbbbbbbbbbbb';
+  listeners.ready();
+  await settle();
+  assert.equal(outdated, 1);
+});
+
+test('the built card carries the build id the integration reads', () => {
+  const built = build();
+  const integration = readFileSync(
+    new URL('../../custom_components/renson_arean/__init__.py', import.meta.url),
+    'utf8'
+  );
+  const pattern = integration.match(/CARD_BUILD_PATTERN = re\.compile\(r"(.+)"\)/);
+  assert.ok(pattern, 'the integration has a pattern for the build id');
+  assert.match(built, new RegExp(pattern[1]));
+  assert.ok(!built.includes(CARD_BUILD), 'the placeholder is filled in');
 });
 
 test('the committed card is built from the current source', () => {

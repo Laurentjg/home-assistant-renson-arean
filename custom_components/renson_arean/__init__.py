@@ -9,13 +9,18 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import voluptuous as vol
+
+from homeassistant.components import websocket_api
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -62,6 +67,9 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 CARD_URL_BASE = f"/{DOMAIN}"
 CARD_FILENAME = "renson-arean-card.js"
+# The build id the card carries; `frontend/build.mjs` writes it into the file.
+CARD_BUILD_PATTERN = re.compile(r"const CARD_BUILD = '([0-9a-f]{12})';")
+DATA_CARD_BUILD = f"{DOMAIN}_card_build"
 
 
 @dataclass
@@ -99,6 +107,27 @@ def _file_digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
 
 
+def _card_build(path: Path) -> str | None:
+    """Return the build id written into the card, if it has one."""
+    match = CARD_BUILD_PATTERN.search(path.read_text(encoding="utf-8"))
+    return match.group(1) if match else None
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/card_build"})
+@callback
+def _ws_card_build(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Tell the card which build is installed.
+
+    A card that carries another build id runs from an older copy in the
+    browser, and asks the user to refresh.
+    """
+    connection.send_result(msg["id"], {"build": hass.data.get(DATA_CARD_BUILD)})
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Serve the dashboard card.
 
@@ -120,6 +149,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     card = Path(__file__).parent / "frontend" / CARD_FILENAME
     digest = await hass.async_add_executor_job(_file_digest, card)
     add_extra_js_url(hass, f"{CARD_URL_BASE}/{CARD_FILENAME}?v={digest}")
+    # The build as it is at startup: that is the one this URL hands out.
+    hass.data[DATA_CARD_BUILD] = await hass.async_add_executor_job(_card_build, card)
+    websocket_api.async_register_command(hass, _ws_card_build)
     return True
 
 

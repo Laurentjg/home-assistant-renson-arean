@@ -17,6 +17,7 @@ import {
 } from './model.js';
 import { WP } from './pump.js';
 import { CHART_DAYS, fetchEnergy } from './stats.js';
+import { checkBuild } from './version.js';
 
 const CARD_TAG = 'renson-arean-card';
 
@@ -483,6 +484,7 @@ export class RensonAreanCard extends HTMLElement {
   _update() {
     if (!this._svg || !this._config || !this._hass) return;
     const lang = languageOf(this._hass);
+    checkBuild(this, this._hass, lang);
     const vm = buildView(this._hass, this._config, lang);
     this._vm = vm;
     this._loadStats();
