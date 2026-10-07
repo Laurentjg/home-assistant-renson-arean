@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 
 from .const import (
     APP_HEATPUMP,
@@ -26,6 +26,8 @@ from .const import (
     app_id,
     app_origin,
     brain_id,
+    calculated_id,
+    calculated_origin,
     gateway_origin,
     heatpump_id,
     heatpump_origin,
@@ -121,6 +123,22 @@ def heatpump_device(entry_id: str, app: str, slave: int) -> DeviceInfo:
     )
 
 
+def calculated_device(entry_id: str, slave: int) -> DeviceInfo:
+    """Where the values the integration calculates itself are shown (D-19).
+
+    Not a box in the installation, so it has no manufacturer and is a service
+    in Home Assistant's terms. It hangs under the heat pump, whose readings it
+    is calculated from.
+    """
+    return DeviceInfo(
+        identifiers={(DOMAIN, calculated_id(entry_id))},
+        via_device=(DOMAIN, heatpump_id(entry_id, slave)),
+        entry_type=DeviceEntryType.SERVICE,
+        name="Berekende waarden",
+        model="Door de integratie berekend",
+    )
+
+
 @dataclass(frozen=True)
 class DeviceSet:
     """Every device of one config entry, built once and shared by the platforms.
@@ -139,6 +157,9 @@ class DeviceSet:
     hvac_address: str | None = None
     heatpump: DeviceInfo | None = None
     heatpump_origin: Origin | None = None
+    # Only with a heat pump: everything calculated so far is calculated from it.
+    calculated: DeviceInfo | None = None
+    calculated_origin: Origin | None = None
 
 
 def build_devices(
@@ -200,5 +221,13 @@ def build_devices(
         heatpump=heatpump_info,
         heatpump_origin=(
             heatpump_origin(entry_id) if heatpump_info is not None else None
+        ),
+        calculated=(
+            calculated_device(entry_id, HEATPUMP_SLAVE)
+            if heatpump_info is not None
+            else None
+        ),
+        calculated_origin=(
+            calculated_origin(entry_id) if heatpump_info is not None else None
         ),
     )

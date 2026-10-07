@@ -27,10 +27,14 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
 )
 
 from .api.client import RensonAuthError, RensonClient, RensonError
 from .const import (
+    CONF_HEAT_MEDIUM,
     CONF_HOST,
     CONF_INTERVAL_CONFIG,
     CONF_INTERVAL_STATE,
@@ -46,6 +50,7 @@ from .const import (
     CONNECTED_TO_BRAIN,
     CONNECTED_TO_HVAC,
     DEFAULT_CONNECTED_TO,
+    DEFAULT_HEAT_MEDIUM,
     DEFAULT_INTERVAL_CONFIG,
     DEFAULT_INTERVAL_STATE,
     DEFAULT_INTERVAL_THERMOSTAT,
@@ -54,6 +59,7 @@ from .const import (
     DEFAULT_VERIFY_SSL,
     DEFAULT_VOLTAGE_OFFSET,
     DOMAIN,
+    HEAT_FACTORS,
     MAX_VOLTAGE_OFFSET,
     MIN_INTERVAL_CONFIG,
     MIN_INTERVAL_STATE,
@@ -170,14 +176,16 @@ class RensonConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class RensonOptionsFlow(OptionsFlow):
-    """Connection settings, the per-source intervals of §6.2 and one calibration.
+    """Connection settings, the per-source intervals of §6.2 and two calibrations.
 
     These are settings of the integration, not of a device, so they live here
     and not as `number` or `select` entities (P-03).
 
     The voltage offset is the exception: it calibrates the monobloc's sensor.
     It lives here anyway, because a `number` entity on a read-only device would
-    suggest the value is written to the heat pump (D-06, D-18).
+    suggest the value is written to the heat pump (D-06, D-18). The same holds
+    for what the heating circuit is filled with: it only decides how the heat
+    output is calculated here.
     """
 
     async def async_step_init(
@@ -255,6 +263,16 @@ class RensonOptionsFlow(OptionsFlow):
                         step=VOLTAGE_OFFSET_STEP,
                         mode=NumberSelectorMode.BOX,
                         unit_of_measurement="V",
+                    )
+                ),
+                vol.Optional(
+                    CONF_HEAT_MEDIUM,
+                    default=options.get(CONF_HEAT_MEDIUM, DEFAULT_HEAT_MEDIUM),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=list(HEAT_FACTORS),
+                        translation_key=CONF_HEAT_MEDIUM,
+                        mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
             }

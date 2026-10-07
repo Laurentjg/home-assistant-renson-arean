@@ -41,15 +41,23 @@
           "interval_state": "Uitgangen en app-log, seconden",
           "interval_config": "App-configuratie, seconden",
           "interval_topology": "Modules, apps en versies, seconden",
-          "voltage_offset": "Offset spanningsmeting, volt"
+          "voltage_offset": "Offset spanningsmeting, volt",
+          "heat_medium": "Het verwarmingscircuit is gevuld met"
         },
         "data_description": {
-          "voltage_offset": "De spanningssensor in het Renson Arean R290-monoblok kan afwijken van de werkelijke netspanning. Vul hier een vaste correctie in; die wordt bij de gemeten waarde opgeteld (negatief als het monoblok te hoog meet). Waarschuwing: laat de spanning aan het monoblok alleen meten door een gecertificeerd vakman: gevaar voor elektrische schok, en het toestel bevat brandbaar koudemiddel (R290, propaan)."
+          "voltage_offset": "De spanningssensor in het Renson Arean R290-monoblok kan afwijken van de werkelijke netspanning. Vul hier een vaste correctie in; die wordt bij de gemeten waarde opgeteld (negatief als het monoblok te hoog meet). Waarschuwing: laat de spanning aan het monoblok alleen meten door een gecertificeerd vakman: gevaar voor elektrische schok, en het toestel bevat brandbaar koudemiddel (R290, propaan).",
+          "heat_medium": "Bepaalt hoe het warmtevermogen en de warmte-energie worden berekend uit het debiet en het temperatuurverschil. Water met glycol (antivries) voert ongeveer 7 % minder warmte af dan zuiver water. Vraag het je installateur als je niet weet waarmee het circuit gevuld is."
         }
       }
     }
   },
   "selector": {
+    "heat_medium": {
+      "options": {
+        "water": "Water",
+        "glycol": "Water met glycol (antivries)"
+      }
+    },
     "thermostat_connected_to": {
       "options": {
         "brain": "Brain module",

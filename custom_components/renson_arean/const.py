@@ -30,6 +30,7 @@ CONF_INTERVAL_STATE = "interval_state"
 CONF_INTERVAL_CONFIG = "interval_config"
 CONF_INTERVAL_TOPOLOGY = "interval_topology"
 CONF_VOLTAGE_OFFSET = "voltage_offset"
+CONF_HEAT_MEDIUM = "heat_medium"
 
 DEFAULT_THERMOSTAT_SLAVE = 41
 DEFAULT_VERIFY_SSL = False
@@ -60,6 +61,26 @@ MIN_VOLTAGE_OFFSET = -10.0
 MAX_VOLTAGE_OFFSET = 10.0
 VOLTAGE_OFFSET_STEP = 0.1
 
+# What the heating circuit between the monobloc and the house is filled with.
+# It decides how much heat a cubic metre of it carries per kelvin, in
+# kWh/(m³·K), and with that the heat output and heat energy (heat.py).
+HEAT_MEDIUM_WATER = "water"
+HEAT_MEDIUM_GLYCOL = "glycol"
+DEFAULT_HEAT_MEDIUM = HEAT_MEDIUM_WATER
+HEAT_FACTORS: dict[str, float] = {
+    HEAT_MEDIUM_WATER: 1.163,
+    # Water with about 30 % glycol. The exact value depends on the kind of
+    # glycol and the concentration: about 1.06 for ethylene glycol and 1.10 for
+    # propylene glycol at 30 %. One value for both is within 3 % of either.
+    HEAT_MEDIUM_GLYCOL: 1.08,
+}
+
+# The longest interval the heat energy counter still counts, as a number of
+# state polls and as a lower bound in seconds. Beyond it the interval is a
+# restart or an outage, and is left out.
+HEAT_ENERGY_MAX_GAP_POLLS = 3
+HEAT_ENERGY_MIN_MAX_GAP = 300.0
+
 # --- Sources (§5.0) ----------------------------------------------------------
 
 SOURCE_GATEWAY_CORE = "gateway:core"
@@ -84,6 +105,10 @@ def source_app_runtime(app: str) -> str:
 # anywhere; the evidence is freshness. While the app keeps logging arrays that
 # can only come from the monobloc, the Modbus coupling demonstrably works.
 SOURCE_HARDWARE_HEATPUMP = "hardware:heatpump"
+
+# What the integration works out itself from values it read elsewhere. Not a
+# source that can fail by itself: such a value is gone when its inputs are.
+SOURCE_CALCULATED = "integration:calculated"
 HEATPUMP_ARRAYS = ("HP_UNIT/hp1", "HP_GLOBAL/0")
 # Both arrays appear about once a minute; three silent polls is itself abnormal.
 # Shorter makes the entity restless, longer makes it slow (§5.0).
@@ -738,6 +763,11 @@ def heatpump_id(entry_id: str, slave: int) -> str:
     return f"{entry_id}:modbus:{slave}"
 
 
+def calculated_id(entry_id: str) -> str:
+    """Identifier of the device that holds the calculated values."""
+    return f"{entry_id}:calculated"
+
+
 # --- Origins (§4.3) ----------------------------------------------------------
 #
 # An identifier above says which *device* something is. An origin says what a
@@ -796,6 +826,15 @@ def heatpump_origin(entry_id: str) -> Origin:
     in `hvac_origin`: it addresses the unit, it does not identify its readings.
     """
     return Origin(f"{entry_id}:heatpump", "heatpump")
+
+
+def calculated_origin(entry_id: str) -> Origin:
+    """What the integration calculates itself (D-19).
+
+    Heat output is not a reading of the heat pump: nothing in the installation
+    reports it. Rooting it on the heat pump would claim that it does.
+    """
+    return Origin(f"{entry_id}:calculated", "calculated")
 
 
 def ssr_origin(entry_id: str) -> Origin:

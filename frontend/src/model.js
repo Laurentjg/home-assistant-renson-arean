@@ -5,7 +5,8 @@ import { hasString, t } from './i18n.js';
 
 export const NA = '—';
 
-// kWh per m³ per K, for plain water.
+// kWh per m³ per K, for plain water. Only for a card without a heat output
+// entity: the integration's own sensor knows what the circuit is filled with.
 const WATER_HEAT_FACTOR = 1.163;
 
 // Every entity role of the card, with the domains the editor offers for it.
@@ -53,6 +54,7 @@ const SUGGESTIONS = {
   status: ['sensor.heatpump_operating_state'],
   fan_running: ['sensor.heatpump_operating_state'],
   silent_mode: ['binary_sensor.app_rensonheatpumplogic_silent_mode'],
+  serial: ['sensor.heatpump_warranty_number'],
   outdoor_temp: ['sensor.heatpump_outside_temperature'],
   compressor_hz: ['sensor.heatpump_compressor_frequency'],
   circulation_pump: ['binary_sensor.heatpump_waterpump_active'],
@@ -60,6 +62,8 @@ const SUGGESTIONS = {
   hot_temp: ['sensor.heatpump_flow_temperature'],
   pressure: ['sensor.hvac_module_in1_pressure'],
   flow: ['sensor.heatpump_flow'],
+  heat_power: ['sensor.calculated_heat_output'],
+  heat_energy: ['sensor.calculated_heat_energy'],
   voltage: ['sensor.heatpump_mains_voltage'],
   current: ['sensor.heatpump_current'],
   room_temp: ['climate.thermostat_0'],
@@ -261,6 +265,9 @@ export function buildView(hass, config, lang) {
     heatReading = read('heat_power');
     const value = toNumber(heatReading);
     heatKw = value === null ? null : toKilowatt(value, heatReading.unit);
+    // The integration's sensor is negative while cooling: heat leaves the
+    // water. The label already says "cooling", so the card shows the size.
+    if (cooling && heatKw !== null) heatKw = Math.abs(heatKw);
   } else {
     heatKw = heatOutput(flowM3h, deltaT);
   }

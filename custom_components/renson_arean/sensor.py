@@ -8,9 +8,11 @@ when it changes its log format (D-14).
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any, Callable
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
@@ -22,10 +24,14 @@ from .const import (
     APP_LOGIC,
     APP_THERMOSTAT,
     CONFIDENCE_ASSUMED,
+    HEAT_ENERGY_MAX_GAP_POLLS,
+    HEAT_ENERGY_MIN_MAX_GAP,
+    HEAT_FACTORS,
     HEATPUMP_ARRAYS,
     HVAC_INPUTS,
     HVAC_OUTPUTS,
     OM_PRESET_TO_HA,
+    SOURCE_CALCULATED,
     SOURCE_GATEWAY_CORE,
     SSR_APP_VERSION,
     SSR_ARRAYS,
@@ -35,6 +41,7 @@ from .const import (
     source_app_log,
 )
 from .entity import RensonEntity, entity_id_for
+from .heat import HeatEnergyCounter, heat_output
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -212,6 +219,152 @@ def _ssr_sensor(
             ),
         },
     )
+
+
+HEAT_ARRAY = "HP_UNIT/hp1"
+
+
+def _heat_output_fn(factor: float) -> Callable[[Any], float | None]:
+    """The heat given to the water, in kW, over one snapshot (heat.py).
+
+    Flow × factor × (flow temperature − return temperature). Gone together
+    with `hardware:heatpump`, like every other value of the monobloc (§5.0).
+    """
+    index = {position.key: position.index for position in SSR_ARRAYS[HEAT_ARRAY].positions}
+
+    def value(data: Any) -> float | None:
+        if not data.heatpump_reachable:
+            return None
+        return heat_output(
+            data.ssr.value(HEAT_ARRAY, index["flow"]),
+            data.ssr.value(HEAT_ARRAY, index["flow_temperature"]),
+            data.ssr.value(HEAT_ARRAY, index["return_temperature"]),
+            factor,
+        )
+
+    return value
+
+
+def _heat_attributes(medium: str) -> dict[str, Any]:
+    """How the value was derived, and how sure its inputs are."""
+    return {
+        "input_source": source_app_log(APP_LOGIC),
+        # Flow and the flow/return assignment are inferences (V-16).
+        "function_confidence": CONFIDENCE_ASSUMED,
+        "derived_from": "flow × factor × (flow temperature − return temperature)",
+        "heat_medium": medium,
+        "factor": HEAT_FACTORS[medium],
+    }
+
+
+class HeatEnergySensor(RensonEntity, RestoreSensor):
+    """The heat given to the water, added up, in kWh.
+
+    A counter and not a measurement, so two things differ from every other
+    sensor here. The total survives a restart: it is restored from the last
+    state. And it stays available while the heat pump has no value: the total
+    is still what was counted, there is only nothing to add — `counting` in the
+    attributes says which.
+
+    The total can go down. A defrost takes heat out of the system, and so does
+    cooling; hence `total` and not `total_increasing`.
+    """
+
+    _entity_domain = "sensor"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL
+    _attr_native_unit_of_measurement = "kWh"
+    _attr_suggested_display_precision = 1
+
+    def __init__(
+        self,
+        coordinator: RensonCoordinator,
+        device: DeviceInfo,
+        origin: Origin,
+        medium: str,
+    ) -> None:
+        """Bind the counter to the heat output it adds up."""
+        super().__init__(
+            coordinator,
+            device,
+            origin,
+            "heat_energy",
+            "Warmte-energie",
+            SOURCE_CALCULATED,
+        )
+        self._medium = medium
+        self._power_fn = _heat_output_fn(HEAT_FACTORS[medium])
+        interval = coordinator.update_interval
+        self._counter = HeatEnergyCounter(
+            max_gap=max(
+                HEAT_ENERGY_MIN_MAX_GAP,
+                HEAT_ENERGY_MAX_GAP_POLLS * (interval.total_seconds() if interval else 0),
+            )
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Continue from the total before the restart."""
+        await super().async_added_to_hass()
+        last = await self.async_get_last_sensor_data()
+        try:
+            self._counter.total = float(last.native_value) if last else 0.0
+        except (TypeError, ValueError):
+            # Unknown or unavailable when Home Assistant stopped.
+            self._counter.total = 0.0
+        self._sample()
+
+    def _sample(self) -> None:
+        coordinator = self.coordinator
+        power = (
+            self._power_fn(coordinator.data)
+            if coordinator.last_update_success and coordinator.data
+            else None
+        )
+        self._counter.add(power, time.monotonic())
+
+    def _handle_coordinator_update(self) -> None:
+        """Count the interval that just ended, then publish."""
+        self._sample()
+        super()._handle_coordinator_update()
+
+    @property
+    def native_value(self) -> float:
+        """The total so far."""
+        return round(self._counter.total, 3)
+
+    def _extra_attributes(self) -> dict[str, Any]:
+        return {**_heat_attributes(self._medium), "counting": self._counter.counting}
+
+
+def _heat_sensors(runtime: RensonRuntime) -> list[SensorEntity]:
+    """Heat output and heat energy of the monobloc.
+
+    Calculated, not read, so they have a device and an origin of their own
+    (D-19): the heat pump device only holds what the heat pump reports.
+    """
+    devices = runtime.devices
+    device, origin = devices.calculated, devices.calculated_origin
+    medium = runtime.heat_medium
+    output = _heat_output_fn(HEAT_FACTORS[medium])
+    return [
+        RensonSensor(
+            runtime.state,
+            device,
+            origin,
+            "heat_output",
+            "Warmtevermogen",
+            SOURCE_CALCULATED,
+            lambda data: (
+                None if (value := output(data)) is None else round(value, 3)
+            ),
+            device_class=SensorDeviceClass.POWER,
+            unit="kW",
+            # No state class: over months the counter below is the series to
+            # look back on, and it holds everything this one would (§5.9).
+            attributes_fn=lambda _data, medium=medium: _heat_attributes(medium),
+        ),
+        HeatEnergySensor(runtime.state, device, origin, medium),
+    ]
 
 
 def _brain_sensors(runtime: RensonRuntime) -> list[RensonSensor]:
@@ -663,9 +816,9 @@ async def async_setup_entry(
                 ),
                 endpoint="get_config",
                 entity_category=DIAGNOSTIC,
-                enabled_default=False,
             )
         )
+        entities.extend(_heat_sensors(runtime))
 
     for app, (device, origin) in devices.apps.items():
         entities.append(
