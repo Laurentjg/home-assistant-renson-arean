@@ -1022,7 +1022,9 @@ class RensonAreanCardEditor extends HTMLElement {
 
   // ---- card.js ----
 /* The card element. A wide card draws on an 800 × 600 reference grid (LAYOUT);
- * a narrow one stacks the same parts on a 400 px wide grid (NARROW). */
+ * a narrow one stacks the same parts on a grid as wide as the card (NARROW).
+ * Neither is ever drawn larger than designed: the text keeps Home Assistant's
+ * own sizes and the pump keeps its proportion to it. */
 
 
 const CARD_TAG = 'renson-arean-card';
@@ -1055,22 +1057,30 @@ const ANCHORS = WP.anchors(PROJECT);
 // section or a phone is about this narrow; a panel view or a wide section is not.
 const NARROW_BELOW = 640;
 
-// The stacked layout, in px on a reference width of 400 px. Its height follows
-// the content.
+// The stacked layout, in px. It is as wide as the card, from `minW` up to the
+// point where the wide layout takes over; a narrower card shows the `minW`
+// layout scaled down. Its height follows the content.
 const NARROW = {
-  w: 400,
+  minW: 400,
   margin: 16,
-  // The same drawing, placed smaller: screen = offset + k × reference.
-  pump: { k: 0.6, dx: -13, dy: 30 },
+  // The same drawing, placed smaller and centred: screen = offset + k × reference.
+  pump: { k: 0.6, dy: 30 },
   compressorLabelGap: 12,
   stackBase: 104,
   belowPump: 270,
   boxesTop: 358,
   boxGap: 12,
   boxPad: 18,
-  chart: { inset: 34, labelGap: 26, top: 14, height: 72, max: 5, barW: 15, barPitch: 22.5 },
-  cops: { top: 44, valueGap: 28, step: 112 },
+  chart: { inset: 34, labelGap: 26, top: 14, height: 72, max: 5, barFill: 0.66 },
+  cops: { top: 44, valueGap: 28 },
 };
+
+// The middle of the pump with its pipes, on the reference grid.
+const PUMP_MID_X = (ANCHORS.cableEnd[0] + ANCHORS.rightPipeEnd[0]) / 2;
+
+function narrowPump(w) {
+  return { k: NARROW.pump.k, dx: w / 2 - NARROW.pump.k * PUMP_MID_X, dy: NARROW.pump.dy };
+}
 
 const WIDE_PUMP = { k: 1, dx: 0, dy: 0 };
 
@@ -1086,16 +1096,13 @@ const FAN_SPEED = 1.8;
 const FAN_SILENT_FACTOR = 0.4;
 const STATS_INTERVAL_MS = 5 * 60 * 1000;
 
-// Font sizes come straight from the Home Assistant tokens. `--wp-s` is the
-// factor by which the card is wider than the reference: dividing by it keeps
-// the text at the size the rest of Home Assistant uses instead of letting it
-// grow with the card.
-const size = (token, fallback) => `calc(var(${token}, ${fallback}px) / var(--wp-s, 1))`;
+// Font sizes come straight from the Home Assistant tokens.
+const size = (token, fallback) => `var(${token}, ${fallback}px)`;
 
 const STYLE = `
   :host { display: block; }
   ha-card { overflow: hidden; }
-  svg { display: block; width: 100%; height: auto;
+  svg { display: block; width: 100%; max-width: ${LAYOUT.ref.w}px; height: auto; margin: 0 auto;
     font-family: var(--ha-font-family-body, Roboto, Noto, sans-serif); }
   .t-title { font-size: ${size('--ha-font-size-l', 16)}; font-weight: var(--ha-font-weight-medium, 500);
     fill: var(--primary-text-color); }
@@ -1293,17 +1300,21 @@ const WIDE_SCENE = {
   hot: [ANCHORS.rightPipeEnd[0], ANCHORS.rightPipeEnd[1], LAYOUT.belowPipeRight],
 };
 
-const NARROW_SCENE = {
-  pump: NARROW.pump,
-  cx: NARROW.w / 2,
-  compressorLabel: NARROW.pump.dy + NARROW.pump.k * ANCHORS.top - NARROW.compressorLabelGap,
-  left: NARROW.margin,
-  right: NARROW.w - NARROW.margin,
-  stackBase: NARROW.stackBase,
-  // At this size the values do not fit beside the pump: they go in a row below it.
-  cold: [NARROW.margin, NARROW.belowPump, LAYOUT.belowPipe],
-  hot: [NARROW.w - NARROW.margin, NARROW.belowPump, LAYOUT.belowPipe],
-};
+function narrowScene(w) {
+  const N = NARROW;
+  const pump = narrowPump(w);
+  return {
+    pump,
+    cx: w / 2,
+    compressorLabel: pump.dy + pump.k * ANCHORS.top - N.compressorLabelGap,
+    left: N.margin,
+    right: w - N.margin,
+    stackBase: N.stackBase,
+    // At this size the values do not fit beside the pump: they go in a row below it.
+    cold: [N.margin, N.belowPump, LAYOUT.belowPipe],
+    hot: [w - N.margin, N.belowPump, LAYOUT.belowPipe],
+  };
+}
 
 function renderWide(vm, energy, lang) {
   const L = LAYOUT;
@@ -1325,11 +1336,11 @@ function renderWide(vm, energy, lang) {
   return { svg: s + renderEnergy(energy, lang), height: L.ref.h };
 }
 
-function renderNarrow(vm, energy, lang) {
+function renderNarrow(vm, energy, lang, w) {
   const L = LAYOUT;
   const N = NARROW;
-  const frame = { x: N.margin, w: N.w - 2 * N.margin, r: 12 };
-  let s = renderScene(vm, lang, NARROW_SCENE);
+  const frame = { x: N.margin, w: w - 2 * N.margin, r: 12 };
+  let s = renderScene(vm, lang, narrowScene(w));
   let y = N.boxesTop;
 
   // A box with a title and rows, as high as its rows.
@@ -1361,12 +1372,15 @@ function renderNarrow(vm, energy, lang) {
   } else {
     const nc = N.chart;
     const top = bottom + nc.labelGap + nc.top;
-    const ch = { ...nc, x: be.x + nc.inset, w: be.w - nc.inset - 16, top, bottom: top + nc.height };
+    const chartW = be.w - nc.inset - 16;
+    const barPitch = (chartW - 4) / CHART_DAYS;
+    const ch = { ...nc, x: be.x + nc.inset, w: chartW, top, bottom: top + nc.height, barPitch, barW: barPitch * nc.barFill };
     inner += text(x, bottom + nc.labelGap, t(lang, 'chart'), 't-label') + renderChart(energy, ch);
     const labelY = ch.bottom + N.cops.top;
+    const step = (be.w - 32) / energy.cops.length;
     energy.cops.forEach((row, i) => {
-      inner += text(x + i * N.cops.step, labelY, row.label, 't-row-l');
-      inner += value(x + i * N.cops.step, labelY + N.cops.valueGap, row.cell, 't-hero');
+      inner += text(x + i * step, labelY, row.label, 't-row-l');
+      inner += value(x + i * step, labelY + N.cops.valueGap, row.cell, 't-hero');
     });
     bottom = labelY + N.cops.valueGap;
   }
@@ -1453,14 +1467,14 @@ class RensonAreanCard extends HTMLElement {
     this._syncAnimation();
   }
 
-  // The width decides the layout, and how far the text is scaled back.
+  // The width decides the layout, and how wide the stacked one is drawn.
   _setWidth(width) {
     if (!(width > 0)) return;
     const narrow = width < NARROW_BELOW;
-    const reference = narrow ? NARROW.w : LAYOUT.ref.w;
-    this._svg.style.setProperty('--wp-s', String(Math.max(1, width / reference)));
-    if (narrow !== this._narrow) {
+    const narrowW = narrow ? Math.max(NARROW.minW, Math.round(width)) : null;
+    if (narrow !== this._narrow || narrowW !== this._narrowW) {
       this._narrow = narrow;
+      this._narrowW = narrowW;
       this._update();
     }
   }
@@ -1483,10 +1497,11 @@ class RensonAreanCard extends HTMLElement {
     this._loadStats();
 
     const narrow = Boolean(this._narrow);
-    if (narrow !== this._placedNarrow) {
-      this._placedNarrow = narrow;
-      const { k, dx, dy } = narrow ? NARROW.pump : WIDE_PUMP;
-      this._pumpLayer.setAttribute('transform', `translate(${dx},${dy}) scale(${k})`);
+    const width = narrow ? this._narrowW : LAYOUT.ref.w;
+    if (width !== this._placedWidth) {
+      this._placedWidth = width;
+      const { k, dx, dy } = narrow ? narrowPump(width) : WIDE_PUMP;
+      this._pumpLayer.setAttribute('transform', `translate(${dx.toFixed(1)},${dy}) scale(${k})`);
     }
 
     // The drawing itself only changes with the quality and the cooling mode.
@@ -1506,12 +1521,12 @@ class RensonAreanCard extends HTMLElement {
     // Home Assistant hands over a new `hass` on every state change anywhere;
     // redraw only when something this card shows has changed.
     const energy = buildEnergyView(this._hass, this._config, this._stats, lang);
-    const signature = JSON.stringify([lang, narrow, vm, energy]);
+    const signature = JSON.stringify([lang, width, vm, energy]);
     if (signature !== this._signature) {
       this._signature = signature;
-      const drawn = (narrow ? renderNarrow : renderWide)(vm, energy, lang);
+      const drawn = narrow ? renderNarrow(vm, energy, lang, width) : renderWide(vm, energy, lang);
       this._svg.setAttribute('aria-label', t(lang, 'aria'));
-      this._svg.setAttribute('viewBox', `0 0 ${narrow ? NARROW.w : LAYOUT.ref.w} ${Math.ceil(drawn.height)}`);
+      this._svg.setAttribute('viewBox', `0 0 ${width} ${Math.ceil(drawn.height)}`);
       this._dynamicLayer.innerHTML = drawn.svg;
     }
     this._syncAnimation();

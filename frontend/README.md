@@ -115,11 +115,17 @@ refresh every five minutes.
 ### Two layouts
 
 The card measures its own width. From 640 px it draws the wide layout, on an 800 × 600 grid
-(`LAYOUT` in `card.js`). Below that it draws the stacked layout on a 400 px wide grid (`NARROW`):
-the values in a row above and below a smaller pump, then the boxes below each other, as high as
-their rows. A dashboard section is about 500 px wide and a phone about 400 px, so both get the
-stacked layout with text at Home Assistant's own sizes; the wide layout is for a full-width
-section or a panel view. In the demo page, `?width=420` shows the stacked layout.
+(`LAYOUT` in `card.js`). Below that it draws the stacked layout (`NARROW`): the values in a row
+above and below a smaller pump, then the boxes below each other, as high as their rows. A
+dashboard section is about 500 px wide and a phone about 400 px, so both get the stacked layout;
+the wide layout is for a full-width section or a panel view. In the demo page, `?width=420` shows
+the stacked layout.
+
+Neither layout is drawn larger than designed, so the text always has Home Assistant's own sizes
+and the pump keeps its proportion to it. The stacked layout is as wide as the card: the pump
+stays the same size in the middle and the boxes and the chart take the extra width. The wide
+layout stops growing at 800 px and is centred in a wider card. Only a card narrower than the
+design (below 400 px stacked, 640 to 800 px wide) is scaled down as a whole.
 
 ### How the integration serves the card
 

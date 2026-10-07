@@ -102,9 +102,9 @@ The card only shows; it does not change settings. Tap a value to open its entity
 
 **Adding it**
 
-Edit a dashboard, choose **Add card** and search for *Renson*. The card fills in the entities of this integration by itself; you can change each one in the editor. In YAML it is `type: custom:renson-arean-card`. The card adapts to the room it gets: in a full-width section or a panel view it is one wide picture, and in a normal section or on a phone it stacks the same parts below each other, so the text keeps the size of the rest of your dashboard.
+Edit a dashboard, choose **Add card** and search for *Renson*. The card fills in the entities of this integration by itself; you can change each one in the editor. In YAML it is `type: custom:renson-arean-card`. The card adapts to the room it gets: in a full-width section or a panel view it is one wide picture, and in a normal section or on a phone it stacks the same parts below each other, so the text keeps the size of the rest of your dashboard. The drawing is never enlarged beyond its design size: in a very wide view the card stays 800 px wide, centred.
 
-If the card does not appear in the list after an update, or shows a configuration error in one browser only, that browser still holds an older copy: reload the page once without cache (Ctrl+Shift+R).
+If the card does not appear in the list after an update, or shows a configuration error in one browser only, that browser still holds an older copy of Home Assistant's pages. Reload the page once without cache (Ctrl+Shift+R). If that does not help, clear the stored data for your Home Assistant address — in Firefox: the padlock in the address bar → **Clear cookies and site data** — and log in again. The first page after that may still show the error for a moment before the card appears. A private window is a quick way to tell: if the card works there, stored data in your normal profile is the cause.
 
 **Electricity and COP need your own meter**
 
