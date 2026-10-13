@@ -33,7 +33,7 @@ custom_components/renson_arean/frontend/
 
 ```bash
 cd frontend
-node --test test/     # run the tests
+node --test test/*.test.mjs   # run the tests
 node build.mjs        # write custom_components/renson_arean/frontend/renson-arean-card.js
 node build.mjs --check
 ```

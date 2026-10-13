@@ -83,4 +83,4 @@ jobs:
       - name: The committed card is what the source builds
         run: node frontend/build.mjs --check
       - name: Card tests
-        run: node --test frontend/test/
+        run: node --test frontend/test/*.test.mjs
