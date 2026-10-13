@@ -20,7 +20,6 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
-from homeassistant.components.lovelace.const import LOVELACE_DATA, MODE_STORAGE
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
@@ -143,9 +142,13 @@ def _card_resources(hass: HomeAssistant) -> Any:
 
     With dashboards in YAML the user writes the resources, and there is
     nothing an integration can add to.
+
+    Looked up by name and not imported: this is not a public interface of
+    Home Assistant. An import that no longer exists would keep the whole
+    integration from loading; a lookup that fails only costs the resource.
     """
-    lovelace = hass.data.get(LOVELACE_DATA)
-    if lovelace is None or lovelace.resource_mode != MODE_STORAGE:
+    lovelace = hass.data.get("lovelace")
+    if lovelace is None or lovelace.resource_mode != "storage":
         return None
     return lovelace.resources
 
