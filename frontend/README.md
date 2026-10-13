@@ -133,9 +133,20 @@ design (below 400 px stacked, 640 to 800 px wide) is scaled down as a whole.
 
 ### How the integration serves the card
 
-`async_setup` in `__init__.py` serves this folder at `/renson_arean` and adds the card to the
-frontend with a hash of the file in the URL, so a browser fetches every new build instead of
-reusing a cached one.
+`async_setup` in `__init__.py` serves this folder at `/renson_arean`. The URL of the card carries
+a hash of the file, so a browser fetches every new build instead of reusing a cached one.
+
+The integration adds that URL to the dashboard resources (**Settings → Dashboards → Resources**),
+keeps it at the current build and removes it with the last gateway (`card_resource.py`). Home
+Assistant has no public call for this; the integration works on the collection behind that page,
+and falls back to `add_extra_js_url` when that fails or when the resources are kept in YAML.
+
+A resource and not `add_extra_js_url`, because of when each is loaded. An extra module is loaded
+with the page, next to Home Assistant's own app. The app replaces `window.customElements` with a
+registry of its own, which starts empty. A small card usually runs first, registers in the
+registry that is then thrown away, and the dashboard says "Custom element doesn't exist".
+Resources are loaded by the dashboard, after the app. For the fallback the card registers a
+second time once `home-assistant` itself is defined (end of `card.js`).
 
 ### Telling the user to refresh
 

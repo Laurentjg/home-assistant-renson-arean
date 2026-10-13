@@ -2,7 +2,7 @@
 
 ![The Renson Arean dashboard card](images/card.png)
 
-The integration brings its own dashboard card: a drawn heat pump with the values around it, where they belong. There is nothing extra to install — the card comes with the integration and is available after a restart.
+The integration brings its own dashboard card: a drawn heat pump with the values around it, where they belong. There is nothing extra to install — the card comes with the integration and is available after a restart. The integration adds it to **Settings → Dashboards → Resources** by itself, as `/renson_arean/renson-arean-card.js`, and removes it again when you remove the integration. Leave that line as it is.
 
 **What it shows**
 
