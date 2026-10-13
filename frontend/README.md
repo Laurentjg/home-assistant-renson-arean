@@ -40,7 +40,9 @@ node build.mjs --check
 
 Then open `demo/index.html` in a browser. It needs no server and no Home Assistant, and has
 switches for every state the card knows. The last test fails when the committed card is not built
-from the current source, so a forgotten build does not go unnoticed.
+from the current source, so a forgotten build does not go unnoticed. On GitHub the same check and
+the tests run on every pull request (job `card` in `.github/workflows/security.yaml`), and CodeQL
+reads the card (`codeql.yaml`).
 
 `build.mjs` is not a bundler. It puts the modules behind each other in dependency order and drops
 the `import` and `export` keywords. Two rules follow from that: a module only imports from modules
@@ -139,7 +141,9 @@ a hash of the file, so a browser fetches every new build instead of reusing a ca
 The integration adds that URL to the dashboard resources (**Settings → Dashboards → Resources**),
 keeps it at the current build and removes it with the last gateway (`card_resource.py`). Home
 Assistant has no public call for this; the integration works on the collection behind that page,
-and falls back to `add_extra_js_url` when that fails or when the resources are kept in YAML.
+and falls back to `add_extra_js_url` when that fails or when the resources are kept in YAML. The
+collection is looked up by name, not imported: if Home Assistant changes it, only the resource is
+lost and the integration still loads.
 
 A resource and not `add_extra_js_url`, because of when each is loaded. An extra module is loaded
 with the page, next to Home Assistant's own app. The app replaces `window.customElements` with a

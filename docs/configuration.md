@@ -7,7 +7,7 @@
 - The gateway reachable on your local network over HTTPS
 - A local user account on the gateway
 
-The integration has **no external dependencies**. `requirements` in the manifest is empty and stays that way: a library that is not there cannot carry a vulnerability.
+The integration has **no external dependencies**. `requirements` in the manifest is empty and stays that way: a library that is not there cannot carry a vulnerability. Every release from 2026.10.0 on carries a file `sbom.cdx.json` that lists each file of the integration with its SHA-256, so you can check that what you installed is what was released.
 
 ## Create a local user on the Renson Brain module
 

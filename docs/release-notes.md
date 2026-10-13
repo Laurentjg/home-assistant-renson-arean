@@ -35,6 +35,7 @@ Two things you may want to do:
 - **No gas boiler and no operating hours yet.** The card has a place for both, but the integration does not supply them; the rows stay hidden until you connect an entity of your own.
 - **The card has two shapes.** Wide, as one picture, in a full-width section or a panel view; stacked, with the boxes below the heat pump, in a normal section or on a phone. It picks the shape by itself, so the text stays readable. The drawing is never enlarged beyond its design size: in a very wide view the card stays 800 px wide, centred.
 - **The card appears under your dashboard resources.** The integration adds `/renson_arean/renson-arean-card.js` to **Settings → Dashboards → Resources** and keeps it up to date; removing the integration removes it. If you keep your resources in YAML, Home Assistant does not let an integration add one; the card is then loaded with the page, and you do not need to add anything yourself.
+- **Each release lists what is in it.** From this version on a release carries `sbom.cdx.json`: every file of the integration with its SHA-256. The integration still has no external dependencies.
 - **The card tells you when to refresh.** After a later update a browser can keep running the previous version of the card. The card then shows *The Renson Arean card has been updated* with a **Refresh** button at the bottom of the screen.
 - **Defrosting and hot water have no picture of their own yet.**
 

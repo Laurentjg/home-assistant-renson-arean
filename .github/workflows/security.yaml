@@ -53,6 +53,11 @@ jobs:
       - name: Static analysis of our own code
         run: bandit -r custom_components -f json -o bandit.json
 
+      # The same file a release carries (SEC-04); made here too, so a change
+      # that breaks it shows before the release does.
+      - name: Write the SBOM
+        run: python3 .github/scripts/make_sbom.py sbom.cdx.json
+
       # Archived per run, so it stays checkable afterwards what was known at
       # the time of release (SEC-08).
       - name: Archive scan results
@@ -63,3 +68,19 @@ jobs:
           path: |
             pip-audit.json
             bandit.json
+            sbom.cdx.json
+
+  # The card is the one file in the integration that is generated. It has no
+  # dependencies and needs nothing installed, so the runner's own Node is
+  # used rather than one more action.
+  card:
+    name: Card is built from its source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Node version
+        run: node --version
+      - name: The committed card is what the source builds
+        run: node frontend/build.mjs --check
+      - name: Card tests
+        run: node --test frontend/test/

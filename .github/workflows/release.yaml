@@ -33,7 +33,7 @@ jobs:
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:
-      # Only to turn a wrong release back into a draft.
+      # To turn a wrong release back into a draft, and to attach the SBOM.
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -52,3 +52,12 @@ jobs:
         run: |
           gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" -F draft=true
           echo "::error::Release withdrawn to draft; see the check above."
+
+      # What is in this release, file by file (SEC-04).
+      - name: Attach the SBOM to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python3 .github/scripts/make_sbom.py sbom.cdx.json
+          gh release upload "$TAG" sbom.cdx.json --clobber
