@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { runInNewContext } from 'node:vm';
 
 import { build } from '../build.mjs';
 import { formatNumber } from '../src/format.js';
@@ -448,4 +449,42 @@ test('the committed card is built from the current source', () => {
   const built = build();
   assert.equal(committed, built);
   assert.ok(!/^\s*(import|export)\s/m.test(built), 'no module syntax left');
+});
+
+// A registry as the browser has one, and as Home Assistant's app puts one in
+// its place: the new one starts empty and passes its definitions on.
+function registry(native) {
+  const defined = new Map();
+  const waiting = new Map();
+  return {
+    get: (tag) => defined.get(tag),
+    define(tag, cls) {
+      defined.set(tag, cls);
+      if (native && !native.get(tag)) native.define(tag, cls);
+      (waiting.get(tag) || []).forEach((resolve) => resolve(cls));
+    },
+    whenDefined(tag) {
+      if (defined.has(tag)) return Promise.resolve(defined.get(tag));
+      return new Promise((resolve) => waiting.set(tag, [...(waiting.get(tag) || []), resolve]));
+    },
+  };
+}
+
+test('a card loaded before Home Assistant is known to its registry too', async () => {
+  const native = registry();
+  const window = {
+    HTMLElement: class {},
+    customElements: native,
+    document: { documentElement: { lang: 'nl' } },
+    navigator: { language: 'nl' },
+  };
+  window.window = window;
+  runInNewContext(build(), window);
+  assert.ok(native.get('renson-arean-card'));
+
+  window.customElements = registry(native);
+  window.customElements.define('home-assistant', class {});
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.ok(window.customElements.get('renson-arean-card'));
+  assert.ok(window.customElements.get('renson-arean-card-editor'));
 });

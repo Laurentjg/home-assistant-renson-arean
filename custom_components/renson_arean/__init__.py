@@ -20,11 +20,13 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.components.lovelace.const import LOVELACE_DATA, MODE_STORAGE
 from homeassistant.core import callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
+from . import card_resource
 from .api.client import RensonAuthError, RensonClient, RensonError
 from .const import (
     CONF_HEAT_MEDIUM,
@@ -70,9 +72,11 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 CARD_URL_BASE = f"/{DOMAIN}"
 CARD_FILENAME = "renson-arean-card.js"
+CARD_URL = f"{CARD_URL_BASE}/{CARD_FILENAME}"
 # The build id the card carries; `frontend/build.mjs` writes it into the file.
 CARD_BUILD_PATTERN = re.compile(r"const CARD_BUILD = '([0-9a-f]{12})';")
 DATA_CARD_BUILD = f"{DOMAIN}_card_build"
+DATA_CARD_URL = f"{DOMAIN}_card_url"
 
 
 @dataclass
@@ -134,6 +138,42 @@ def _ws_card_build(
     connection.send_result(msg["id"], {"build": hass.data.get(DATA_CARD_BUILD)})
 
 
+def _card_resources(hass: HomeAssistant) -> Any:
+    """Return the dashboard resources, if Home Assistant keeps them itself.
+
+    With dashboards in YAML the user writes the resources, and there is
+    nothing an integration can add to.
+    """
+    lovelace = hass.data.get(LOVELACE_DATA)
+    if lovelace is None or lovelace.resource_mode != MODE_STORAGE:
+        return None
+    return lovelace.resources
+
+
+async def _async_load_card(hass: HomeAssistant) -> None:
+    """Have the dashboards load the card.
+
+    As a dashboard resource, which is loaded once the frontend is up. Loaded
+    with the page instead, the card can run before the frontend puts its own
+    element registry in place, and the dashboard then does not know the card.
+    """
+    url = hass.data[DATA_CARD_URL]
+    try:
+        resources = _card_resources(hass)
+        if resources is not None:
+            await card_resource.async_ensure(resources, CARD_URL, url)
+            return
+    except Exception:
+        # The resources are not a public interface of Home Assistant and may
+        # change; the card must still load then.
+        _LOGGER.warning(
+            "Could not add the card to the dashboard resources; "
+            "loading it with the page instead",
+            exc_info=True,
+        )
+    add_extra_js_url(hass, url)
+
+
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Serve the dashboard card.
 
@@ -154,7 +194,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     # that cached one build keeps it for every other build with that version.
     card = Path(__file__).parent / "frontend" / CARD_FILENAME
     digest = await hass.async_add_executor_job(_file_digest, card)
-    add_extra_js_url(hass, f"{CARD_URL_BASE}/{CARD_FILENAME}?v={digest}")
+    hass.data[DATA_CARD_URL] = f"{CARD_URL}?v={digest}"
     # The build as it is at startup: that is the one this URL hands out.
     hass.data[DATA_CARD_BUILD] = await hass.async_add_executor_job(_card_build, card)
     websocket_api.async_register_command(hass, _ws_card_build)
@@ -163,6 +203,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: RensonConfigEntry) -> bool:
     """Set up one gateway (§10.1)."""
+    # Here and not in `async_setup`: removing the last gateway removes the
+    # resource, and adding one again does not run `async_setup` again.
+    await _async_load_card(hass)
     session = async_create_clientsession(
         hass, verify_ssl=entry.options.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
     )
@@ -264,6 +307,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: RensonConfigEntry) -> bo
 async def async_unload_entry(hass: HomeAssistant, entry: RensonConfigEntry) -> bool:
     """Unload the config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: RensonConfigEntry) -> None:
+    """Take the card out of the dashboard resources with the last gateway."""
+    if hass.config_entries.async_entries(DOMAIN):
+        return
+    try:
+        resources = _card_resources(hass)
+        if resources is not None:
+            await card_resource.async_remove(resources, CARD_URL)
+    except Exception:
+        _LOGGER.warning(
+            "Could not remove the card from the dashboard resources", exc_info=True
+        )
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:

@@ -590,8 +590,17 @@ export class RensonAreanCard extends HTMLElement {
 }
 
 // Guarded: a user may briefly have both the bundled card and a standalone one.
-if (!customElements.get(EDITOR_TAG)) customElements.define(EDITOR_TAG, RensonAreanCardEditor);
-if (!customElements.get(CARD_TAG)) customElements.define(CARD_TAG, RensonAreanCard);
+function register() {
+  if (!customElements.get(EDITOR_TAG)) customElements.define(EDITOR_TAG, RensonAreanCardEditor);
+  if (!customElements.get(CARD_TAG)) customElements.define(CARD_TAG, RensonAreanCard);
+}
+register();
+
+// Home Assistant's app puts a registry of its own in window.customElements,
+// and that one starts empty. This card is small and often runs first; the
+// dashboard then says "Custom element doesn't exist". Home Assistant's root
+// element is defined once the new registry is there, in the old one as well.
+customElements.whenDefined('home-assistant').then(register);
 
 window.customCards = window.customCards || [];
 if (!window.customCards.some((card) => card.type === CARD_TAG)) {
