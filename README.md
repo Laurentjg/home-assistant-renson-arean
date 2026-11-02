@@ -2,7 +2,7 @@
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 ![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.6%2B-blue)
-![Version](https://img.shields.io/badge/version-2026.10.0-green)
+![Version](https://img.shields.io/badge/version-2026.11.0-green)
 
 > **This integration is still in development, and it has been tested on one installation only.** What differs from one Renson installation to the next is not known yet, so it needs other installations to find out. **Feedback and contributions are very welcome**: tell us what works and what does not on yours through the [issue tracker](https://github.com/Laurentjg/home-assistant-renson-arean/issues), or send a pull request.
 

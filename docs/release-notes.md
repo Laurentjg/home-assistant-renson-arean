@@ -4,10 +4,13 @@ What each version means for you as a user.
 
 ---
 
-## 2026.10.0 — in preparation
+## 2026.11.0 — in preparation
+
+The betas 2026.10.0b1 to 2026.10.0b4 led up to this version; it was released in November, so it carries the November number.
 
 ### What gets better
 
+- **Your gateway password stays out of the log.** When the gateway answered a login with an HTTP error — for instance while you changed the setpoint just as the session was renewed — the full traceback in `home-assistant.log` contained the login address, username and password included. That no longer happens. A failed change of setpoint, preset or mode now shows as one message in the interface instead of a traceback in the log.
 - **Five heat pump readings are now confirmed.** Flow and return temperature, flow rate, flow temperature setpoint and *Pomp monoblok actief* were checked against nine days of operation and an independent energy meter, and their `function_confidence` attribute now says `confirmed` instead of `assumed`. Heat output and heat energy, which are calculated from them, follow. Nothing else changes: same entities, same values; only the raw diagnostic positions for these five drop *(aanname)* from their name.
 - **A dashboard card for your heat pump.** The integration now brings its own card: a drawn heat pump with the fan turning while it runs, water flowing through the pipes, ten bars for the compressor load, and the temperatures, flow rate, pressure, voltage and heat output right next to the part they belong to. Add it from the card picker by searching for *Renson*; it fills in its entities by itself. See [The dashboard card](dashboard-card.md) in the README.
 - **Heat output and heat energy, without building anything.** Two new sensors, on a new device *Berekende waarden* (calculated values) under the heat pump — the heat pump device itself only shows what the heat pump reports: `Warmtevermogen` (`sensor.calculated_heat_output`, kW) is the heat given to the water right now, calculated from flow rate × temperature difference, and `Warmte-energie` (`sensor.calculated_heat_energy`, kWh) adds it up. The counter keeps its total across restarts and builds long-term statistics, so you can look back over months.
