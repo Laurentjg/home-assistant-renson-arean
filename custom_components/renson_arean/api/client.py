@@ -114,7 +114,9 @@ class RensonClient:
                 response.raise_for_status()
                 data = await response.json(content_type=None)
         except aiohttp.ClientResponseError as err:
-            raise RensonApiError(f"{path} returned HTTP {err.status}") from err
+            # Not chained: the original's text holds the full URL, query and
+            # all, so a logged traceback would carry the password (M-03).
+            raise RensonApiError(f"{path} returned HTTP {err.status}") from None
         except aiohttp.ClientError as err:
             raise RensonConnectionError(f"{path} failed: {err}") from err
 

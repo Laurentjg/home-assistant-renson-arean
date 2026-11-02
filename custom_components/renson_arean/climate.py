@@ -30,6 +30,7 @@ from .const import (
     SETPOINT_MIN,
     SOURCE_GATEWAY_CORE,
 )
+from .api.client import RensonError
 from .entity import RensonEntity
 from .thermostat.backends import select_backend
 from .thermostat.confirm import REFRESH_SCHEDULE, ConfirmationWindow
@@ -191,7 +192,10 @@ class RensonThermostat(RensonEntity, ClimateEntity):
         mode = HVAC_TO_OM_MODE.get(hvac_mode)
         if state is None or mode is None:
             return
-        await self._runtime.client.set_thermostat_group_mode(state.group_id, mode)
+        try:
+            await self._runtime.client.set_thermostat_group_mode(state.group_id, mode)
+        except RensonError as err:
+            raise HomeAssistantError(str(err)) from err
         await self._confirm()
 
     async def _write(self, key: str, value: Any, write) -> None:
@@ -200,6 +204,10 @@ class RensonThermostat(RensonEntity, ClimateEntity):
         except ValueError as err:
             # A wrong or malicious script must not put nonsense on the bus
             # (SEC-12).
+            raise HomeAssistantError(str(err)) from err
+        except RensonError as err:
+            # A failed call is the gateway's answer, not a bug: one line in the
+            # UI instead of a traceback in the log.
             raise HomeAssistantError(str(err)) from err
 
         # The UI reacts within a frame, before any poll comes back.
