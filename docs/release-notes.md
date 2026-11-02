@@ -4,7 +4,7 @@ What each version means for you as a user.
 
 ---
 
-## 2026.11.0 — in preparation
+## 2026.11.0 — 2 November 2026
 
 The betas 2026.10.0b1 to 2026.10.0b4 led up to this version; it was released in November, so it carries the November number.
 
