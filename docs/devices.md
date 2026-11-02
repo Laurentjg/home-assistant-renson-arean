@@ -55,7 +55,7 @@ Each app on the Brain is its own device, named exactly as OpenMotics names it, w
 
 ### The heat pump
 
-Flow and return temperature, flow rate, flow temperature setpoint, compressor frequency, operating state, domestic hot water temperature, mains voltage, current drawn and the outside temperature the control logic is working with. Two on/off indicators show whether the compressor is *requested* (this comes on about two minutes before it actually runs) and whether the pump inside the monobloc is running.
+Flow and return temperature, flow rate, flow temperature setpoint, compressor frequency, operating state, domestic hot water temperature, mains voltage, current drawn and the outside temperature the control logic is working with. Two on/off indicators show whether the compressor is *requested* (this comes on about a minute before it actually runs) and whether the pump inside the monobloc is running.
 
 The **warranty number** (Garantienummer) of the heat pump, as stored in the control logic, is a diagnostic sensor.
 
