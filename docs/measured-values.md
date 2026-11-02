@@ -4,7 +4,7 @@ The heat pump's readings and the HVAC module's sensor inputs are **not offered b
 
 - **They can be empty after a restart.** The app only logs a value when it *changes*. If a temperature holds steady for an hour, nothing is written for an hour. That is not a bug and polling faster does not help.
 - **They go unavailable when the app updates.** The meaning of each position is tied to a specific app version — the layout demonstrably changed between two versions in ten weeks. On an unfamiliar version these entities report nothing rather than a wrong number.
-- **Some of them are still being confirmed.** Every entity carries a `function_confidence` attribute. Where it says `assumed`, the mapping is a well-supported inference that has not been verified against the installation yet.
+- **Some of them are still being confirmed.** Every entity carries a `function_confidence` attribute. Where it says `assumed`, the mapping is a well-supported inference that has not been verified against the installation yet. Flow and return temperature, flow rate, flow temperature setpoint and the monobloc pump have since been confirmed over nine days of operation and now say `confirmed` (see [how reliable the heat output is](heat-and-cop.md#how-reliable-is-it)).
 
 Every position of every log array is also published under a neutral name — `HP_UNIT/hp1 waarde 17`, as `sensor.ssr_hp_unit_hp1_17` — as a diagnostic sensor, so the remaining meanings can be established by correlating history.
 
@@ -18,7 +18,7 @@ Home Assistant keeps long-term statistics forever, even after the regular histor
 - system pressure
 - heat energy, as a counter
 
-Settings, voltages and diagnostic values get none. Neither does the heat output: the heat energy counter holds the same information, and the heat delivered over any hour, day or month follows from it. The integration computes **no COP and no electrical consumption** itself: the heat pump only reports voltage and current, from which no reliable consumption follows. A dedicated energy meter does that better — and with one, you can calculate the COP yourself, see [Heat output, heat energy and COP](heat-and-cop.md).
+Settings, voltages and diagnostic values get none. Neither does the heat output: the heat energy counter holds the same information, and the heat delivered over any hour, day or month follows from it. The integration computes **no COP and no electrical consumption** itself: the heat pump only reports voltage and a current that does not cover the whole unit, from which no reliable consumption follows. A dedicated energy meter does that better — and with one, you can calculate the COP yourself, see [Heat output, heat energy and COP](heat-and-cop.md).
 
 ---
 

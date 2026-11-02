@@ -24,6 +24,7 @@ from .const import (
     APP_LOGIC,
     APP_THERMOSTAT,
     CONFIDENCE_ASSUMED,
+    CONFIDENCE_CONFIRMED,
     HEAT_ENERGY_MAX_GAP_POLLS,
     HEAT_ENERGY_MIN_MAX_GAP,
     HEAT_FACTORS,
@@ -249,8 +250,9 @@ def _heat_attributes(medium: str) -> dict[str, Any]:
     """How the value was derived, and how sure its inputs are."""
     return {
         "input_source": source_app_log(APP_LOGIC),
-        # Flow and the flow/return assignment are inferences (V-16).
-        "function_confidence": CONFIDENCE_ASSUMED,
+        # Flow and the flow/return assignment are confirmed against an
+        # independent energy meter (V-16, 2026-11-02).
+        "function_confidence": CONFIDENCE_CONFIRMED,
         "derived_from": "flow × factor × (flow temperature − return temperature)",
         "heat_medium": medium,
         "factor": HEAT_FACTORS[medium],

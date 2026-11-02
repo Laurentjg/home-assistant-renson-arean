@@ -444,8 +444,9 @@ class SsrPosition:
     """One position of an SSR array that has been given a meaning.
 
     `confidence` is the honest half: `confirmed` means the app named the value
-    itself in a log line, `assumed` means it was inferred from the measurements
-    and still needs a check (see non-public/design/open-issues.md).
+    itself in a log line, or a second, independent route reproduces it,
+    `assumed` means it was inferred from the measurements and still needs a
+    check (see non-public/design/open-issues.md).
     """
 
     index: int
@@ -590,14 +591,14 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 index=6,
                 key="waterpump_active",
                 name="Pomp monoblok actief",
-                confidence=CONFIDENCE_ASSUMED,
+                confidence=CONFIDENCE_CONFIRMED,
                 platform=PLATFORM_BINARY_SENSOR,
             ),
             SsrPosition(
                 index=7,
                 key="flow",
                 name="Debiet",
-                confidence=CONFIDENCE_ASSUMED,
+                confidence=CONFIDENCE_CONFIRMED,
                 device_class="volume_flow_rate",
                 unit="m³/h",
             ),
@@ -610,7 +611,7 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 confidence=CONFIDENCE_ASSUMED,
                 entity=False,
             ),
-            # Rises about two minutes before the frequency leaves 0: the request,
+            # Rises about a minute before the frequency leaves 0: the request,
             # not the running compressor (index 12).
             SsrPosition(
                 index=9,
@@ -619,8 +620,8 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 confidence=CONFIDENCE_ASSUMED,
                 platform=PLATFORM_BINARY_SENSOR,
             ),
-            # 0 at rest, 30–72 while running, pinned at 30 = the lower
-            # modulation limit for minutes on end (2026-09-09).
+            # 0 at rest, 30–84 while running, pinned at 30 = the lower
+            # modulation limit for minutes on end (2026-09-09, 2026-10-28).
             SsrPosition(
                 index=12,
                 key="compressor_frequency",
@@ -634,7 +635,7 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 index=16,
                 key="flow_setpoint",
                 name="Aanvoersetpoint",
-                confidence=CONFIDENCE_ASSUMED,
+                confidence=CONFIDENCE_CONFIRMED,
                 device_class="temperature",
                 unit="°C",
             ),
@@ -642,7 +643,7 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 index=18,
                 key="flow_temperature",
                 name="Aanvoertemperatuur",
-                confidence=CONFIDENCE_ASSUMED,
+                confidence=CONFIDENCE_CONFIRMED,
                 device_class="temperature",
                 unit="°C",
                 state_class=STATE_CLASS_MEASUREMENT,
@@ -651,7 +652,7 @@ SSR_ARRAYS: dict[str, SsrArray] = {
                 index=19,
                 key="return_temperature",
                 name="Retourtemperatuur",
-                confidence=CONFIDENCE_ASSUMED,
+                confidence=CONFIDENCE_CONFIRMED,
                 device_class="temperature",
                 unit="°C",
                 state_class=STATE_CLASS_MEASUREMENT,

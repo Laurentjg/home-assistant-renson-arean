@@ -12,3 +12,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # CodeQL refuses to run when init and analyze differ in version, so a
+    # pull request that bumps only one of them always fails. One group, one
+    # pull request for both.
+    groups:
+      codeql:
+        patterns:
+          - "github/codeql-action*"
